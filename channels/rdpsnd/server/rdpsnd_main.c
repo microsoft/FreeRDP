@@ -847,6 +847,7 @@ static UINT rdpsnd_server_start(RdpsndServerContext* context)
 	UINT error = ERROR_INTERNAL_ERROR;
 	PULONG pSessionId = NULL;
 
+<<<<<<< HEAD
 	WINPR_ASSERT(context);
 	WINPR_ASSERT(context->priv);
 
