@@ -706,6 +706,10 @@ static BOOL nego_read_request_token_or_cookie(rdpNego* nego, wStream* s)
 
 	if (memcmp(Stream_Pointer(s), "Cookie: mstshash=", 17) != 0)
 	{
+		if (memcmp(Stream_Pointer(s), "Cookie: msts=", 13) != 0)
+		{
+			return TRUE;
+		}
 		isToken = TRUE;
 	}
 	else
@@ -799,6 +803,11 @@ BOOL nego_read_request(rdpNego* nego, wStream* s)
 
 		if (!nego_process_negotiation_request(nego, s))
 			return FALSE;
+	}
+
+	if (Stream_GetRemainingLength(s) >= 36)
+	{
+		Stream_Seek(s,36); 
 	}
 
 	return tpkt_ensure_stream_consumed(s, length);
@@ -1112,8 +1121,7 @@ BOOL nego_send_negotiation_response(rdpNego* nego)
 				settings->UseRdpSecurityLayer = FALSE;
 				settings->EncryptionLevel = ENCRYPTION_LEVEL_NONE;
 			}
-
-			if (!settings->RdpServerRsaKey && !settings->RdpKeyFile && !settings->RdpKeyContent)
+			else if (!settings->RdpServerRsaKey && !settings->RdpKeyFile && !settings->RdpKeyContent)
 			{
 				WLog_ERR(TAG, "Missing server certificate");
 				return FALSE;
