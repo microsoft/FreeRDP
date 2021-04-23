@@ -1,7 +1,7 @@
 # This pipeline will just build FreeRDP to be sure we dont break
 
   trigger:
-    - stable-2.0-wslg
+    - working
     
   pool:
     vmImage: 'ubuntu-latest'
