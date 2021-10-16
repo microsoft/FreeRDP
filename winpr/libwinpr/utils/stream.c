@@ -60,7 +60,6 @@ BOOL Stream_EnsureCapacity(wStream* s, size_t size)
 			return FALSE;
 		s->buffer = new_buf;
 		s->capacity = new_capacity;
-		s->length = new_capacity;
 		ZeroMemory(&s->buffer[old_capacity], s->capacity - old_capacity);
 
 		Stream_SetPosition(s, position);
