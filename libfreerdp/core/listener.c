@@ -230,13 +230,12 @@ static BOOL freerdp_listener_open_from_socket(freerdp_listener* instance, int fd
 		return FALSE;
 
 	listener->sockfds[listener->num_sockfds] = fd;
-	listener->events[listener->num_sockfds] = WSACreateEvent();;
+	listener->events[listener->num_sockfds] = WSACreateEvent();
 
 	if (!listener->events[listener->num_sockfds])
 		return FALSE;
 
-	WSAEventSelect(fd, listener->events[listener->num_sockfds],
-		               FD_READ | FD_ACCEPT | FD_CLOSE);
+	WSAEventSelect(fd, listener->events[listener->num_sockfds], FD_READ | FD_ACCEPT | FD_CLOSE);
 
 	listener->num_sockfds++;
 	WLog_INFO(TAG, "Listening on socket %d.", fd);

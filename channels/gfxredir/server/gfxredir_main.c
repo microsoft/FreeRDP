@@ -68,7 +68,8 @@ static UINT gfxredir_recv_legacy_caps_pdu(wStream* s, GfxRedirServerContext* con
  *
  * @return 0 on success, otherwise a Win32 error code
  */
-static UINT gfxredir_recv_caps_advertise_pdu(wStream* s, UINT32 length, GfxRedirServerContext* context)
+static UINT gfxredir_recv_caps_advertise_pdu(wStream* s, UINT32 length,
+                                             GfxRedirServerContext* context)
 {
 	UINT32 error = CHANNEL_RC_OK;
 	GFXREDIR_CAPS_ADVERTISE_PDU pdu;
@@ -112,7 +113,7 @@ static UINT gfxredir_recv_present_buffer_ack_pdu(wStream* s, GfxRedirServerConte
 		return ERROR_INVALID_DATA;
 	}
 
-	Stream_Read_UINT64(s, pdu.windowId); /* windowId (8 bytes) */
+	Stream_Read_UINT64(s, pdu.windowId);  /* windowId (8 bytes) */
 	Stream_Read_UINT64(s, pdu.presentId); /* presentId (8 bytes) */
 
 	if (context)
@@ -239,8 +240,8 @@ static UINT gfxredir_server_handle_messages(GfxRedirServerContext* context)
 			return CHANNEL_RC_NO_MEMORY;
 		}
 
-		if (WTSVirtualChannelRead(priv->gfxredir_channel, 0, (PCHAR)Stream_Buffer(s), Stream_Capacity(s),
-		                          &BytesReturned) == FALSE)
+		if (WTSVirtualChannelRead(priv->gfxredir_channel, 0, (PCHAR)Stream_Buffer(s),
+		                          Stream_Capacity(s), &BytesReturned) == FALSE)
 		{
 			WLog_ERR(TAG, "WTSVirtualChannelRead failed!");
 			return ERROR_INTERNAL_ERROR;
@@ -381,7 +382,7 @@ out:
  *
  * @return 0 on success, otherwise a Win32 error code
  */
-static UINT gfxredir_send_error(GfxRedirServerContext* context, const GFXREDIR_ERROR_PDU *error)
+static UINT gfxredir_send_error(GfxRedirServerContext* context, const GFXREDIR_ERROR_PDU* error)
 {
 	wStream* s = gfxredir_server_single_packet_new(GFXREDIR_CMDID_ERROR, 4);
 
@@ -400,7 +401,8 @@ static UINT gfxredir_send_error(GfxRedirServerContext* context, const GFXREDIR_E
  *
  * @return 0 on success, otherwise a Win32 error code
  */
-static UINT gfxredir_send_caps_confirm(GfxRedirServerContext* context, const GFXREDIR_CAPS_CONFIRM_PDU *graphicsCapsConfirm)
+static UINT gfxredir_send_caps_confirm(GfxRedirServerContext* context,
+                                       const GFXREDIR_CAPS_CONFIRM_PDU* graphicsCapsConfirm)
 {
 	UINT ret;
 	wStream* s;
@@ -409,7 +411,7 @@ static UINT gfxredir_send_caps_confirm(GfxRedirServerContext* context, const GFX
 	{
 		WLog_ERR(TAG, "length must be greater than header size, failed!");
 		return ERROR_INVALID_DATA;
-	}	
+	}
 
 	s = gfxredir_server_single_packet_new(GFXREDIR_CMDID_CAPS_CONFIRM, graphicsCapsConfirm->length);
 
@@ -423,7 +425,8 @@ static UINT gfxredir_send_caps_confirm(GfxRedirServerContext* context, const GFX
 	Stream_Write_UINT32(s, graphicsCapsConfirm->version);
 	Stream_Write_UINT32(s, graphicsCapsConfirm->length);
 	if (graphicsCapsConfirm->length > GFXREDIR_CAPS_HEADER_SIZE)
-		Stream_Write(s, graphicsCapsConfirm->capsData, graphicsCapsConfirm->length - GFXREDIR_CAPS_HEADER_SIZE);
+		Stream_Write(s, graphicsCapsConfirm->capsData,
+		             graphicsCapsConfirm->length - GFXREDIR_CAPS_HEADER_SIZE);
 	ret = gfxredir_server_packet_send(context, s);
 	if (ret == CHANNEL_RC_OK)
 		context->confirmedCapsVersion = graphicsCapsConfirm->version;
@@ -435,7 +438,8 @@ static UINT gfxredir_send_caps_confirm(GfxRedirServerContext* context, const GFX
  *
  * @return 0 on success, otherwise a Win32 error code
  */
-static UINT gfxredir_send_open_pool(GfxRedirServerContext* context, const GFXREDIR_OPEN_POOL_PDU *openPool)
+static UINT gfxredir_send_open_pool(GfxRedirServerContext* context,
+                                    const GFXREDIR_OPEN_POOL_PDU* openPool)
 {
 	wStream* s;
 
@@ -444,19 +448,22 @@ static UINT gfxredir_send_open_pool(GfxRedirServerContext* context, const GFXRED
 		WLog_ERR(TAG, "open_pool is called with invalid version!");
 		return ERROR_INTERNAL_ERROR;
 	}
- 
-	if (openPool->sectionNameLength == 0 || openPool->sectionName == NULL) {
+
+	if (openPool->sectionNameLength == 0 || openPool->sectionName == NULL)
+	{
 		WLog_ERR(TAG, "section name must be provided!");
 		return ERROR_INVALID_DATA;
 	}
 
 	/* make sure null-terminate */
-	if (openPool->sectionName[openPool->sectionNameLength-1] != 0) {
+	if (openPool->sectionName[openPool->sectionNameLength - 1] != 0)
+	{
 		WLog_ERR(TAG, "section name must be terminated with NULL!");
 		return ERROR_INVALID_DATA;
 	}
 
-	s = gfxredir_server_single_packet_new(GFXREDIR_CMDID_OPEN_POOL, 20 + (openPool->sectionNameLength * 2));
+	s = gfxredir_server_single_packet_new(GFXREDIR_CMDID_OPEN_POOL,
+	                                      20 + (openPool->sectionNameLength * 2));
 
 	if (!s)
 	{
@@ -476,7 +483,8 @@ static UINT gfxredir_send_open_pool(GfxRedirServerContext* context, const GFXRED
  *
  * @return 0 on success, otherwise a Win32 error code
  */
-static UINT gfxredir_send_close_pool(GfxRedirServerContext* context, const GFXREDIR_CLOSE_POOL_PDU *closePool)
+static UINT gfxredir_send_close_pool(GfxRedirServerContext* context,
+                                     const GFXREDIR_CLOSE_POOL_PDU* closePool)
 {
 	wStream* s;
 
@@ -503,7 +511,8 @@ static UINT gfxredir_send_close_pool(GfxRedirServerContext* context, const GFXRE
  *
  * @return 0 on success, otherwise a Win32 error code
  */
-static UINT gfxredir_send_create_buffer(GfxRedirServerContext* context, const GFXREDIR_CREATE_BUFFER_PDU *createBuffer)
+static UINT gfxredir_send_create_buffer(GfxRedirServerContext* context,
+                                        const GFXREDIR_CREATE_BUFFER_PDU* createBuffer)
 {
 	wStream* s;
 
@@ -536,7 +545,8 @@ static UINT gfxredir_send_create_buffer(GfxRedirServerContext* context, const GF
  *
  * @return 0 on success, otherwise a Win32 error code
  */
-static UINT gfxredir_send_destroy_buffer(GfxRedirServerContext* context, const GFXREDIR_DESTROY_BUFFER_PDU *destroyBuffer)
+static UINT gfxredir_send_destroy_buffer(GfxRedirServerContext* context,
+                                         const GFXREDIR_DESTROY_BUFFER_PDU* destroyBuffer)
 {
 	wStream* s;
 
@@ -563,11 +573,12 @@ static UINT gfxredir_send_destroy_buffer(GfxRedirServerContext* context, const G
  *
  * @return 0 on success, otherwise a Win32 error code
  */
-static UINT gfxredir_send_present_buffer(GfxRedirServerContext* context, const GFXREDIR_PRESENT_BUFFER_PDU *presentBuffer)
+static UINT gfxredir_send_present_buffer(GfxRedirServerContext* context,
+                                         const GFXREDIR_PRESENT_BUFFER_PDU* presentBuffer)
 {
 	UINT32 length;
 	wStream* s;
-	RECTANGLE_32 dummyRect = {0, 0, 0, 0};
+	RECTANGLE_32 dummyRect = { 0, 0, 0, 0 };
 
 	if (context->confirmedCapsVersion != GFXREDIR_CAPS_VERSION2_0)
 	{
@@ -581,10 +592,10 @@ static UINT gfxredir_send_present_buffer(GfxRedirServerContext* context, const G
 		return ERROR_INVALID_DATA;
 	}
 
- 	length = 64 +
-		((presentBuffer->numOpaqueRects ? presentBuffer->numOpaqueRects : 1) * sizeof(RECTANGLE_32));
+	length = 64 + ((presentBuffer->numOpaqueRects ? presentBuffer->numOpaqueRects : 1) *
+	               sizeof(RECTANGLE_32));
 
- 	s = gfxredir_server_single_packet_new(GFXREDIR_CMDID_PRESENT_BUFFER, length);
+	s = gfxredir_server_single_packet_new(GFXREDIR_CMDID_PRESENT_BUFFER, length);
 
 	if (!s)
 	{
@@ -605,7 +616,8 @@ static UINT gfxredir_send_present_buffer(GfxRedirServerContext* context, const G
 	Stream_Write_UINT32(s, presentBuffer->dirtyRect.height);
 	Stream_Write_UINT32(s, presentBuffer->numOpaqueRects);
 	if (presentBuffer->numOpaqueRects)
-		Stream_Write(s, presentBuffer->opaqueRects, (presentBuffer->numOpaqueRects * sizeof(RECTANGLE_32)));
+		Stream_Write(s, presentBuffer->opaqueRects,
+		             (presentBuffer->numOpaqueRects * sizeof(RECTANGLE_32)));
 	else
 		Stream_Write(s, &dummyRect, sizeof(RECTANGLE_32));
 	return gfxredir_server_packet_send(context, s);
@@ -636,8 +648,8 @@ static UINT gfxredir_server_open(GfxRedirServerContext* context)
 
 	priv->SessionId = (DWORD)*pSessionId;
 	WTSFreeMemory(pSessionId);
-	priv->gfxredir_channel = (HANDLE)WTSVirtualChannelOpenEx(priv->SessionId, GFXREDIR_DVC_CHANNEL_NAME,
-	                                                     WTS_CHANNEL_OPTION_DYNAMIC);
+	priv->gfxredir_channel = (HANDLE)WTSVirtualChannelOpenEx(
+	    priv->SessionId, GFXREDIR_DVC_CHANNEL_NAME, WTS_CHANNEL_OPTION_DYNAMIC);
 
 	if (!priv->gfxredir_channel)
 	{

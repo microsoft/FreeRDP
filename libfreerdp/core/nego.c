@@ -852,7 +852,7 @@ BOOL nego_read_request(rdpNego* nego, wStream* s)
 	 */
 	if (Stream_GetRemainingLength(s) >= 36)
 	{
-		Stream_Seek(s,36);
+		Stream_Seek(s, 36);
 	}
 
 	return tpkt_ensure_stream_consumed(s, length);
@@ -1196,7 +1196,8 @@ BOOL nego_send_negotiation_response(rdpNego* nego)
 				settings->UseRdpSecurityLayer = FALSE;
 				settings->EncryptionLevel = ENCRYPTION_LEVEL_NONE;
 			}
-			else if (!settings->RdpServerRsaKey && !settings->RdpKeyFile && !settings->RdpKeyContent)
+			else if (!settings->RdpServerRsaKey && !settings->RdpKeyFile &&
+			         !settings->RdpKeyContent)
 			{
 				WLog_ERR(TAG, "Missing server certificate");
 				return FALSE;

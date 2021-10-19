@@ -28,8 +28,8 @@
 /* GFXREDIR_LEGACY_CAPS_PDU.version */
 #define GFXREDIR_CHANNEL_VERSION_LEGACY 1
 
-#define GFXREDIR_CHANNEL_VERSION_MAJOR  2
-#define GFXREDIR_CHANNEL_VERSION_MINOR  0
+#define GFXREDIR_CHANNEL_VERSION_MAJOR 2
+#define GFXREDIR_CHANNEL_VERSION_MINOR 0
 
 /* GFXREDIR_CAPS_VERSION1 */
 #define GFXREDIR_CMDID_LEGACY_CAPS 0x00000001
@@ -52,7 +52,7 @@
 /* GFXREDIR_CAPS_HEADER.signature */
 #define GFXREDIR_CAPS_SIGNATURE 0x53504143 /* = 'SPAC' */
 /* GFXREDIR_CAPS_HEADER.version */
-#define GFXREDIR_CAPS_VERSION1   0x1
+#define GFXREDIR_CAPS_VERSION1 0x1
 #define GFXREDIR_CAPS_VERSION2_0 0x2000
 
 /* GFXREDIR_CREATE_BUFFER_PDU.format */
@@ -79,9 +79,9 @@ typedef struct _GFXREDIR_LEGACY_CAPS_PDU GFXREDIR_LEGACY_CAPS_PDU;
 
 struct _GFXREDIR_CAPS_HEADER
 {
-	UINT32 signature; // GFXREDIR_CAPS_SIGNATURE
-	UINT32 version; // GFXREDIR_CAPS_VERSION
-	UINT32 length; // GFXREDIR_CAPS_HEADER_SIZE + size of capsData
+	UINT32 signature;       // GFXREDIR_CAPS_SIGNATURE
+	UINT32 version;         // GFXREDIR_CAPS_VERSION
+	UINT32 length;          // GFXREDIR_CAPS_HEADER_SIZE + size of capsData
 	const BYTE capsData[0]; // GFXREDIR_CAPS_HEADER.length - GFXREDIR_CAPS_HEADER_SIZE
 };
 
@@ -104,17 +104,17 @@ typedef struct _GFXREDIR_ERROR_PDU GFXREDIR_ERROR_PDU;
 
 struct _GFXREDIR_CAPS_ADVERTISE_PDU
 {
-	UINT32 length; // length of caps;
-	const BYTE *caps; // points variable length array of GFXREDIR_CAPS_HEADER.
+	UINT32 length;    // length of caps;
+	const BYTE* caps; // points variable length array of GFXREDIR_CAPS_HEADER.
 };
 
 typedef struct _GFXREDIR_CAPS_ADVERTISE_PDU GFXREDIR_CAPS_ADVERTISE_PDU;
 
 struct _GFXREDIR_CAPS_CONFIRM_PDU
 {
-	UINT32 version; // confirmed version, must be one of advertised by client.
-	UINT32 length; // GFXREDIR_CAPS_HEADER_SIZE + size of capsData.
-	const BYTE *capsData; // confirmed capsData from selected GFXREDIR_CAPS_HEADER.capsData.
+	UINT32 version;       // confirmed version, must be one of advertised by client.
+	UINT32 length;        // GFXREDIR_CAPS_HEADER_SIZE + size of capsData.
+	const BYTE* capsData; // confirmed capsData from selected GFXREDIR_CAPS_HEADER.capsData.
 };
 
 typedef struct _GFXREDIR_CAPS_CONFIRM_PDU GFXREDIR_CAPS_CONFIRM_PDU;
@@ -123,8 +123,8 @@ struct _GFXREDIR_OPEN_POOL_PDU
 {
 	UINT64 poolId;
 	UINT64 poolSize;
-	UINT32 sectionNameLength; // number of charactor, must include null terminated char.
-	const unsigned short *sectionName; // Windows-style 2 bytes wchar_t with null-terminated.
+	UINT32 sectionNameLength;          // number of charactor, must include null terminated char.
+	const unsigned short* sectionName; // Windows-style 2 bytes wchar_t with null-terminated.
 };
 
 typedef struct _GFXREDIR_OPEN_POOL_PDU GFXREDIR_OPEN_POOL_PDU;

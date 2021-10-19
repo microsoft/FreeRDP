@@ -32,21 +32,30 @@ typedef struct _gfxredir_server_context GfxRedirServerContext;
 typedef UINT (*psGfxRedirOpen)(GfxRedirServerContext* context);
 typedef UINT (*psGfxRedirClose)(GfxRedirServerContext* context);
 
-typedef UINT (*psGfxRedirError)(GfxRedirServerContext* context, const GFXREDIR_ERROR_PDU *error);
+typedef UINT (*psGfxRedirError)(GfxRedirServerContext* context, const GFXREDIR_ERROR_PDU* error);
 
-typedef UINT (*psGfxRedirGraphicsRedirectionLegacyCaps)(GfxRedirServerContext* context, const GFXREDIR_LEGACY_CAPS_PDU *graphicsCaps);
+typedef UINT (*psGfxRedirGraphicsRedirectionLegacyCaps)(
+    GfxRedirServerContext* context, const GFXREDIR_LEGACY_CAPS_PDU* graphicsCaps);
 
-typedef UINT (*psGfxRedirGraphicsRedirectionCapsAdvertise)(GfxRedirServerContext* context, const GFXREDIR_CAPS_ADVERTISE_PDU *graphicsCapsAdvertise);
-typedef UINT (*psGfxRedirGraphicsRedirectionCapsConfirm)(GfxRedirServerContext* context, const GFXREDIR_CAPS_CONFIRM_PDU *graphicsCapsConfirm);
+typedef UINT (*psGfxRedirGraphicsRedirectionCapsAdvertise)(
+    GfxRedirServerContext* context, const GFXREDIR_CAPS_ADVERTISE_PDU* graphicsCapsAdvertise);
+typedef UINT (*psGfxRedirGraphicsRedirectionCapsConfirm)(
+    GfxRedirServerContext* context, const GFXREDIR_CAPS_CONFIRM_PDU* graphicsCapsConfirm);
 
-typedef UINT (*psGfxRedirOpenPool)(GfxRedirServerContext* context, const GFXREDIR_OPEN_POOL_PDU *openPool);
-typedef UINT (*psGfxRedirClosePool)(GfxRedirServerContext* context, const GFXREDIR_CLOSE_POOL_PDU *closePool);
+typedef UINT (*psGfxRedirOpenPool)(GfxRedirServerContext* context,
+                                   const GFXREDIR_OPEN_POOL_PDU* openPool);
+typedef UINT (*psGfxRedirClosePool)(GfxRedirServerContext* context,
+                                    const GFXREDIR_CLOSE_POOL_PDU* closePool);
 
-typedef UINT (*psGfxRedirCreateBuffer)(GfxRedirServerContext* context, const GFXREDIR_CREATE_BUFFER_PDU *createBuffer);
-typedef UINT (*psGfxRedirDestroyBuffer)(GfxRedirServerContext* context, const GFXREDIR_DESTROY_BUFFER_PDU *destroyBuffer);
+typedef UINT (*psGfxRedirCreateBuffer)(GfxRedirServerContext* context,
+                                       const GFXREDIR_CREATE_BUFFER_PDU* createBuffer);
+typedef UINT (*psGfxRedirDestroyBuffer)(GfxRedirServerContext* context,
+                                        const GFXREDIR_DESTROY_BUFFER_PDU* destroyBuffer);
 
-typedef UINT (*psGfxRedirPresentBuffer)(GfxRedirServerContext* context, const GFXREDIR_PRESENT_BUFFER_PDU *presentBuffer);
-typedef UINT (*psGfxRedirPresentBufferAck)(GfxRedirServerContext* context, const GFXREDIR_PRESENT_BUFFER_ACK_PDU *presentBufferAck);
+typedef UINT (*psGfxRedirPresentBuffer)(GfxRedirServerContext* context,
+                                        const GFXREDIR_PRESENT_BUFFER_PDU* presentBuffer);
+typedef UINT (*psGfxRedirPresentBufferAck)(GfxRedirServerContext* context,
+                                           const GFXREDIR_PRESENT_BUFFER_ACK_PDU* presentBufferAck);
 
 struct _gfxredir_server_context
 {
