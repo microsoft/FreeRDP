@@ -114,7 +114,6 @@ void freerdp_channels_dummy(void)
 	rdpgfx_server_context_free(rdpgfx);
 	disp = disp_server_context_new(NULL);
 	disp_server_context_free(disp);
-<<<<<<< HEAD
 
 #if defined (CHANNEL_RDPECAM_SERVER)
 	camera_enumerator = cam_dev_enum_server_context_new(NULL);
