@@ -207,7 +207,7 @@ extern "C"
 	                                    LPVOID lpParameter, DWORD dwCreationFlags,
 	                                    LPDWORD lpThreadId);
 
-	WINPR_API DECLSPEC_NORETURN VOID ExitThread(DWORD dwExitCode);
+	WINPR_API VOID ExitThread(DWORD dwExitCode);
 	WINPR_API BOOL GetExitCodeThread(HANDLE hThread, LPDWORD lpExitCode);
 
 	WINPR_API HANDLE _GetCurrentThread(void);
@@ -248,10 +248,7 @@ extern "C"
 	/* CommandLineToArgvA is not present in the original Windows API, WinPR always exports it */
 
 	WINPR_API LPSTR* CommandLineToArgvA(LPCSTR lpCmdLine, int* pNumArgs);
-
-#if defined(WITH_DEBUG_THREADS)
 	WINPR_API VOID DumpThreadHandles(void);
-#endif
 
 #ifdef __cplusplus
 }

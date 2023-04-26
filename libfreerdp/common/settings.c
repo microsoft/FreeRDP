@@ -925,3 +925,58 @@ BOOL freerdp_settings_set_value_for_name(rdpSettings* settings, const char* name
 	}
 	return FALSE;
 }
+
+char* freerdp_rail_support_flags_to_string(UINT32 flags, char* buffer, size_t length)
+{
+	if (flags & RAIL_LEVEL_SUPPORTED)
+		winpr_str_append("RAIL_LEVEL_SUPPORTED", buffer, length, "|");
+	if (flags & RAIL_LEVEL_DOCKED_LANGBAR_SUPPORTED)
+		winpr_str_append("RAIL_LEVEL_DOCKED_LANGBAR_SUPPORTED", buffer, length, "|");
+	if (flags & RAIL_LEVEL_SHELL_INTEGRATION_SUPPORTED)
+		winpr_str_append("RAIL_LEVEL_SHELL_INTEGRATION_SUPPORTED", buffer, length, "|");
+	if (flags & RAIL_LEVEL_LANGUAGE_IME_SYNC_SUPPORTED)
+		winpr_str_append("RAIL_LEVEL_LANGUAGE_IME_SYNC_SUPPORTED", buffer, length, "|");
+	if (flags & RAIL_LEVEL_SERVER_TO_CLIENT_IME_SYNC_SUPPORTED)
+		winpr_str_append("RAIL_LEVEL_SERVER_TO_CLIENT_IME_SYNC_SUPPORTED", buffer, length, "|");
+	if (flags & RAIL_LEVEL_HIDE_MINIMIZED_APPS_SUPPORTED)
+		winpr_str_append("RAIL_LEVEL_HIDE_MINIMIZED_APPS_SUPPORTED", buffer, length, "|");
+	if (flags & RAIL_LEVEL_WINDOW_CLOAKING_SUPPORTED)
+		winpr_str_append("RAIL_LEVEL_WINDOW_CLOAKING_SUPPORTED", buffer, length, "|");
+	if (flags & RAIL_LEVEL_HANDSHAKE_EX_SUPPORTED)
+		winpr_str_append("RAIL_LEVEL_HANDSHAKE_EX_SUPPORTED", buffer, length, "|");
+	if (flags & RAIL_LEVEL_LANGUAGE_IME_SYNC_SUPPORTED)
+		winpr_str_append("RAIL_LEVEL_LANGUAGE_IME_SYNC_SUPPORTED", buffer, length, "|");
+	return buffer;
+}
+
+BOOL freerdp_target_net_addresses_copy(rdpSettings* settings, char** addresses, UINT32 count)
+{
+	UINT32 i;
+
+	WINPR_ASSERT(settings);
+	WINPR_ASSERT(addresses);
+
+	freerdp_target_net_addresses_free(settings);
+
+	settings->TargetNetAddressCount = count;
+	settings->TargetNetAddresses = (char**)calloc(settings->TargetNetAddressCount, sizeof(char*));
+
+	if (!settings->TargetNetAddresses)
+	{
+		freerdp_target_net_addresses_free(settings);
+		return FALSE;
+	}
+
+	for (i = 0; i < settings->TargetNetAddressCount; i++)
+	{
+		settings->TargetNetAddresses[i] = _strdup(addresses[i]);
+
+		if (!settings->TargetNetAddresses[i])
+		{
+			freerdp_target_net_addresses_free(settings);
+			return FALSE;
+		}
+	}
+
+	return TRUE;
+}

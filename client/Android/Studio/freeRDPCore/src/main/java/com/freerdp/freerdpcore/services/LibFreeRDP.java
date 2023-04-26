@@ -23,27 +23,23 @@ import com.freerdp.freerdpcore.domain.ManualBookmark;
 import com.freerdp.freerdpcore.presentation.ApplicationSettingsActivity;
 
 import java.util.ArrayList;
+import java.util.List;
+import java.util.Objects;
+import java.util.regex.MatchResult;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 public class LibFreeRDP
 {
 	private static final String TAG = "LibFreeRDP";
 	private static EventListener listener;
-	private static boolean mHasH264 = true;
+	private static boolean mHasH264 = false;
 
 	private static final LongSparseArray<Boolean> mInstanceState = new LongSparseArray<>();
 
-	static
+	private static boolean tryLoad(String[] libraries)
 	{
-		final String h264 = "openh264";
-		final String[] libraries = { h264,
-			                         "freerdp-openssl",
-			                         "ssl",
-			                         "crypto",
-			                         "jpeg",
-			                         "winpr2",
-			                         "freerdp2",
-			                         "freerdp-client2",
-			                         "freerdp-android2" };
+		boolean success = false;
 		final String LD_PATH = System.getProperty("java.library.path");
 
 		for (String lib : libraries)
@@ -52,15 +48,54 @@ public class LibFreeRDP
 			{
 				Log.v(TAG, "Trying to load library " + lib + " from LD_PATH: " + LD_PATH);
 				System.loadLibrary(lib);
+				success = true;
 			}
 			catch (UnsatisfiedLinkError e)
 			{
 				Log.e(TAG, "Failed to load library " + lib + ": " + e.toString());
-				if (lib.equals(h264))
-				{
-					mHasH264 = false;
-				}
+				success = false;
+				break;
 			}
+		}
+
+		return success;
+	}
+
+	private static boolean tryLoad(String library)
+				{
+		return tryLoad(new String[] { library });
+				}
+	static
+	{
+		try
+		{
+			System.loadLibrary("freerdp-android");
+			String version = freerdp_get_jni_version();
+			Pattern pattern = Pattern.compile("^(\\d+)\\.(\\d+)\\.(\\d+).*");
+			Matcher matcher = pattern.matcher(version);
+			if (!matcher.matches() || (matcher.groupCount() < 3))
+				throw new RuntimeException("APK broken: native library version " + version +
+				                           " does not meet requirements!");
+			int major = Integer.parseInt(Objects.requireNonNull(matcher.group(1)));
+			int minor = Integer.parseInt(Objects.requireNonNull(matcher.group(2)));
+			int patch = Integer.parseInt(Objects.requireNonNull(matcher.group(3)));
+
+			if (major > 2)
+				mHasH264 = freerdp_has_h264();
+			else if (minor > 5)
+				mHasH264 = freerdp_has_h264();
+			else if ((minor == 5) && (patch >= 1))
+				mHasH264 = freerdp_has_h264();
+			else
+				throw new RuntimeException("APK broken: native library version " + version +
+				                           " does not meet requirements!");
+			Log.i(TAG, "Successfully loaded native library. H264 is " +
+			               (mHasH264 ? "supported" : "not available"));
+		}
+		catch (UnsatisfiedLinkError e)
+		{
+			Log.e(TAG, "Failed to load library: " + e.toString());
+			throw e;
 		}
 	}
 
@@ -68,6 +103,8 @@ public class LibFreeRDP
 	{
 		return mHasH264;
 	}
+
+	private static native boolean freerdp_has_h264();
 
 	private static native String freerdp_get_jni_version();
 

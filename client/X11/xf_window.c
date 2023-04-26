@@ -36,6 +36,7 @@
 #include <sys/stat.h>
 #include <fcntl.h>
 
+#include <winpr/assert.h>
 #include <winpr/thread.h>
 #include <winpr/crt.h>
 #include <winpr/string.h>
@@ -355,7 +356,7 @@ BOOL xf_GetWindowProperty(xfContext* xfc, Window window, Atom property, int leng
 
 	if (actual_type == None)
 	{
-		WLog_INFO(TAG, "Property %lu does not exist", (unsigned long)property);
+		WLog_DBG(TAG, "Property %lu does not exist", (unsigned long)property);
 		return FALSE;
 	}
 
@@ -775,6 +776,9 @@ int xf_AppWindowCreate(xfContext* xfc, xfAppWindow* appWindow)
 	appWindow->is_mapped = FALSE;
 	appWindow->is_transient = FALSE;
 	appWindow->rail_state = 0;
+	appWindow->maxVert = FALSE;
+	appWindow->maxHorz = FALSE;
+	appWindow->minimized = FALSE;
 	appWindow->rail_ignore_configure = FALSE;
 	appWindow->handle = XCreateWindow(xfc->display, RootWindowOfScreen(xfc->screen), appWindow->x,
 	                                  appWindow->y, appWindow->width, appWindow->height, 0,
@@ -930,6 +934,9 @@ void xf_MoveWindow(xfContext* xfc, xfAppWindow* appWindow, int x, int y, int wid
 
 void xf_ShowWindow(xfContext* xfc, xfAppWindow* appWindow, BYTE state)
 {
+	WINPR_ASSERT(xfc);
+	WINPR_ASSERT(appWindow);
+
 	switch (state)
 	{
 		case WINDOW_HIDE:
@@ -937,11 +944,14 @@ void xf_ShowWindow(xfContext* xfc, xfAppWindow* appWindow, BYTE state)
 			break;
 
 		case WINDOW_SHOW_MINIMIZED:
+			appWindow->minimized = TRUE;
 			XIconifyWindow(xfc->display, appWindow->handle, xfc->screen_number);
 			break;
 
 		case WINDOW_SHOW_MAXIMIZED:
 			/* Set the window as maximized */
+			appWindow->maxHorz = TRUE;
+			appWindow->maxVert = TRUE;
 			xf_SendClientEvent(xfc, appWindow->handle, xfc->_NET_WM_STATE, 4, _NET_WM_STATE_ADD,
 			                   xfc->_NET_WM_STATE_MAXIMIZED_VERT, xfc->_NET_WM_STATE_MAXIMIZED_HORZ,
 			                   0);

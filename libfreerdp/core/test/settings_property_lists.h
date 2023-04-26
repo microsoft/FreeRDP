@@ -173,6 +173,8 @@ static const size_t bool_list_indices[] = {
 static const size_t uint16_list_indices[] = {
 	FreeRDP_DesktopOrientation,
 	FreeRDP_ProxyPort,
+	FreeRDP_TLSMaxVersion,
+	FreeRDP_TLSMinVersion,
 };
 
 #define have_uint32_list_indices
@@ -257,8 +259,10 @@ static const size_t uint32_list_indices[] = {
 	FreeRDP_RedirectedSessionId,
 	FreeRDP_RedirectionAcceptedCertLength,
 	FreeRDP_RedirectionFlags,
+	FreeRDP_RedirectionGuidLength,
 	FreeRDP_RedirectionPasswordLength,
 	FreeRDP_RedirectionPreferType,
+	FreeRDP_RedirectionTargetCertificateLength,
 	FreeRDP_RedirectionTsvUrlLength,
 	FreeRDP_RemoteAppNumIconCacheEntries,
 	FreeRDP_RemoteAppNumIconCaches,
@@ -282,6 +286,7 @@ static const size_t uint32_list_indices[] = {
 	FreeRDP_StaticChannelCount,
 	FreeRDP_TargetNetAddressCount,
 	FreeRDP_TcpAckTimeout,
+	FreeRDP_TcpConnectTimeout,
 	FreeRDP_TcpKeepAliveDelay,
 	FreeRDP_TcpKeepAliveInterval,
 	FreeRDP_TcpKeepAliveRetries,
@@ -391,7 +396,9 @@ static const size_t pointer_list_indices[] = {
 	FreeRDP_RdpServerCertificate,
 	FreeRDP_RdpServerRsaKey,
 	FreeRDP_ReceivedCapabilities,
+	FreeRDP_RedirectionGuid,
 	FreeRDP_RedirectionPassword,
+	FreeRDP_RedirectionTargetCertificate,
 	FreeRDP_RedirectionTsvUrl,
 	FreeRDP_ServerAutoReconnectCookie,
 	FreeRDP_ServerCertificate,

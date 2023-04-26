@@ -30,6 +30,9 @@
 #include <X11/Xcursor/Xcursor.h>
 #endif
 
+#include <float.h>
+#include <math.h>
+
 #include <winpr/crt.h>
 
 #include <freerdp/codec/bitmap.h>
@@ -41,6 +44,8 @@
 
 #include <freerdp/log.h>
 #define TAG CLIENT_TAG("x11")
+
+static BOOL xf_Pointer_Set(rdpContext* context, const rdpPointer* pointer);
 
 BOOL xf_decode_color(xfContext* xfc, const UINT32 srcColor, XColor* color)
 {
@@ -227,14 +232,14 @@ static BOOL xf_Bitmap_SetSurface(rdpContext* context, rdpBitmap* bitmap, BOOL pr
 	return TRUE;
 }
 
-static BOOL _xf_Pointer_GetCursorForCurrentScale(rdpContext* context, const rdpPointer* pointer,
-                                                 Cursor* cursor)
+static BOOL xf_Pointer_GetCursorForCurrentScale(rdpContext* context, const rdpPointer* pointer,
+                                                Cursor* cursor)
 {
 #ifdef WITH_XCURSOR
 	UINT32 CursorFormat;
 	xfContext* xfc = (xfContext*)context;
 	xfPointer* xpointer = (xfPointer*)pointer;
-	XcursorImage ci;
+	XcursorImage ci = { 0 };
 	rdpSettings* settings;
 	UINT32 xTargetSize;
 	UINT32 yTargetSize;
@@ -253,8 +258,11 @@ static BOOL _xf_Pointer_GetCursorForCurrentScale(rdpContext* context, const rdpP
 
 	xscale = (settings->SmartSizing ? xfc->scaledWidth / (double)settings->DesktopWidth : 1);
 	yscale = (settings->SmartSizing ? xfc->scaledHeight / (double)settings->DesktopHeight : 1);
-	xTargetSize = pointer->width * xscale;
-	yTargetSize = pointer->height * yscale;
+	xTargetSize = MAX(1, pointer->width * xscale);
+	yTargetSize = MAX(1, pointer->height * yscale);
+
+	WLog_DBG(TAG, "%s: scaled: %" PRIu32 "x%" PRIu32 ", desktop: %" PRIu32 "x%" PRIu32, __func__,
+	         xfc->scaledWidth, xfc->savedHeight, settings->DesktopWidth, settings->DesktopHeight);
 
 	for (int i = 0; i < xpointer->nCursors; i++)
 	{
@@ -297,7 +305,6 @@ static BOOL _xf_Pointer_GetCursorForCurrentScale(rdpContext* context, const rdpP
 			}
 		}
 
-		ZeroMemory(&ci, sizeof(ci));
 		ci.version = XCURSOR_IMAGE_VERSION;
 		ci.size = sizeof(ci);
 		ci.width = xTargetSize;
@@ -306,14 +313,21 @@ static BOOL _xf_Pointer_GetCursorForCurrentScale(rdpContext* context, const rdpP
 		ci.yhot = pointer->yPos * yscale;
 		size = ci.height * ci.width * GetBytesPerPixel(CursorFormat) * 1ULL;
 
-		if (xscale != 1 || yscale != 1)
+		if (!(ci.pixels = (XcursorPixel*)_aligned_malloc(size, 16)))
 		{
-			if (!(ci.pixels = (XcursorPixel*)_aligned_malloc(size, 16)))
-			{
-				xf_unlock_x11(xfc);
-				return FALSE;
-			}
+			xf_unlock_x11(xfc);
+			return FALSE;
+		}
 
+		const double xs = fabs(fabs(xscale) - 1.0);
+		const double ys = fabs(fabs(yscale) - 1.0);
+		WLog_DBG(TAG,
+		         "%s: cursorIndex %" PRId32 " scaling pointer %" PRIu32 "x%" PRIu32 " --> %" PRIu32
+		         "x%" PRIu32 " [%lfx%lf]",
+		         __func__, cursorIndex, pointer->width, pointer->height, ci.width, ci.height,
+		         xscale, yscale);
+		if ((xs > DBL_EPSILON) || (ys > DBL_EPSILON))
+		{
 			if (!freerdp_image_scale((BYTE*)ci.pixels, CursorFormat, 0, 0, 0, ci.width, ci.height,
 			                         (BYTE*)xpointer->cursorPixels, CursorFormat, 0, 0, 0,
 			                         pointer->width, pointer->height))
@@ -325,7 +339,7 @@ static BOOL _xf_Pointer_GetCursorForCurrentScale(rdpContext* context, const rdpP
 		}
 		else
 		{
-			ci.pixels = xpointer->cursorPixels;
+			memcpy(ci.pixels, xpointer->cursorPixels, size);
 		}
 
 		cursorIndex = xpointer->nCursors;
@@ -333,10 +347,13 @@ static BOOL _xf_Pointer_GetCursorForCurrentScale(rdpContext* context, const rdpP
 		xpointer->cursorHeights[cursorIndex] = ci.height;
 		xpointer->cursors[cursorIndex] = XcursorImageLoadCursor(xfc->display, &ci);
 		xpointer->nCursors += 1;
-		if (xscale != 1 || yscale != 1)
-			_aligned_free(ci.pixels);
+		_aligned_free(ci.pixels);
 
 		xf_unlock_x11(xfc);
+	}
+	else
+	{
+		WLog_DBG(TAG, "%s: using cached cursor %" PRId32, __func__, cursorIndex);
 	}
 
 	cursor[0] = xpointer->cursors[cursorIndex];
@@ -372,8 +389,21 @@ static Window xf_Pointer_get_window(xfContext* xfc)
 	}
 }
 
+BOOL xf_pointer_update_scale(xfContext* xfc)
+{
+	xfPointer* pointer;
+	WINPR_ASSERT(xfc);
+
+	pointer = xfc->pointer;
+	if (!pointer)
+		return TRUE;
+
+	return xf_Pointer_Set(&xfc->context, &xfc->pointer->pointer);
+}
+
 static BOOL xf_Pointer_New(rdpContext* context, rdpPointer* pointer)
 {
+	BOOL rc = FALSE;
 #ifdef WITH_XCURSOR
 	UINT32 CursorFormat;
 	size_t size;
@@ -381,7 +411,7 @@ static BOOL xf_Pointer_New(rdpContext* context, rdpPointer* pointer)
 	xfPointer* xpointer = (xfPointer*)pointer;
 
 	if (!context || !pointer || !context->gdi)
-		return FALSE;
+		goto fail;
 
 	if (!xfc->invert)
 		CursorFormat = (!xfc->big_endian) ? PIXEL_FORMAT_RGBA32 : PIXEL_FORMAT_ABGR32;
@@ -394,7 +424,7 @@ static BOOL xf_Pointer_New(rdpContext* context, rdpPointer* pointer)
 	size = pointer->height * pointer->width * GetBytesPerPixel(CursorFormat) * 1ULL;
 
 	if (!(xpointer->cursorPixels = (XcursorPixel*)_aligned_malloc(size, 16)))
-		return FALSE;
+		goto fail;
 
 	if (!freerdp_image_copy_from_pointer_data(
 	        (BYTE*)xpointer->cursorPixels, CursorFormat, 0, 0, 0, pointer->width, pointer->height,
@@ -404,15 +434,18 @@ static BOOL xf_Pointer_New(rdpContext* context, rdpPointer* pointer)
 		_aligned_free(xpointer->cursorPixels);
 		return FALSE;
 	}
+	rc = TRUE;
 
-	if (!_xf_Pointer_GetCursorForCurrentScale(context, pointer, &(xpointer->cursor)))
-		return FALSE;
 #endif
-	return TRUE;
+fail:
+	WLog_DBG(TAG, "%s: %ld", __func__, rc ? pointer : -1);
+	return rc;
 }
 
 static void xf_Pointer_Free(rdpContext* context, rdpPointer* pointer)
 {
+	WLog_DBG(TAG, "%s: %p", __func__, pointer);
+
 #ifdef WITH_XCURSOR
 	xfContext* xfc = (xfContext*)context;
 	xfPointer* xpointer = (xfPointer*)pointer;
@@ -438,6 +471,8 @@ static void xf_Pointer_Free(rdpContext* context, rdpPointer* pointer)
 
 static BOOL xf_Pointer_Set(rdpContext* context, const rdpPointer* pointer)
 {
+	WLog_DBG(TAG, "%s: %p", __func__, pointer);
+
 #ifdef WITH_XCURSOR
 	xfContext* xfc = (xfContext*)context;
 	Window handle = xf_Pointer_get_window(xfc);
@@ -447,11 +482,15 @@ static BOOL xf_Pointer_Set(rdpContext* context, const rdpPointer* pointer)
 
 	if (handle)
 	{
-		if (!_xf_Pointer_GetCursorForCurrentScale(context, pointer, &(xfc->pointer->cursor)))
+		if (!xf_Pointer_GetCursorForCurrentScale(context, pointer, &(xfc->pointer->cursor)))
 			return FALSE;
 		xf_lock_x11(xfc);
 		XDefineCursor(xfc->display, handle, xfc->pointer->cursor);
 		xf_unlock_x11(xfc);
+	}
+	else
+	{
+		WLog_WARN(TAG, "%s: handle=%ld", __func__, handle);
 	}
 #endif
 	return TRUE;
@@ -459,6 +498,7 @@ static BOOL xf_Pointer_Set(rdpContext* context, const rdpPointer* pointer)
 
 static BOOL xf_Pointer_SetNull(rdpContext* context)
 {
+	WLog_DBG(TAG, "%s", __func__);
 #ifdef WITH_XCURSOR
 	xfContext* xfc = (xfContext*)context;
 	static Cursor nullcursor = None;
@@ -515,10 +555,11 @@ static BOOL xf_Pointer_SetPosition(rdpContext* context, UINT32 x, UINT32 y)
 
 	if (!handle)
 	{
-		WLog_WARN(TAG, "xf_Pointer_SetPosition: focus %d, handle%lu", xfc->focused, handle);
+		WLog_WARN(TAG, "%s: focus %d, handle%lu", __func__, xfc->focused, handle);
 		return TRUE;
 	}
 
+	WLog_DBG(TAG, "%s: %" PRIu32 "x%" PRIu32, __func__, x, y);
 	if (xfc->remote_app && !xfc->focused)
 		return TRUE;
 
@@ -529,7 +570,7 @@ static BOOL xf_Pointer_SetPosition(rdpContext* context, UINT32 x, UINT32 y)
 	rc = XGetWindowAttributes(xfc->display, handle, &current);
 	if (rc == 0)
 	{
-		WLog_WARN(TAG, "xf_Pointer_SetPosition: XGetWindowAttributes==%d", rc);
+		WLog_WARN(TAG, "%s: XGetWindowAttributes==%d", __func__, rc);
 		goto out;
 	}
 
@@ -538,17 +579,17 @@ static BOOL xf_Pointer_SetPosition(rdpContext* context, UINT32 x, UINT32 y)
 	rc = XChangeWindowAttributes(xfc->display, handle, CWEventMask, &tmp);
 	if (rc == 0)
 	{
-		WLog_WARN(TAG, "xf_Pointer_SetPosition: XChangeWindowAttributes==%d", rc);
+		WLog_WARN(TAG, "%s: XChangeWindowAttributes==%d", __func__, rc);
 		goto out;
 	}
 
 	rc = XWarpPointer(xfc->display, None, handle, 0, 0, 0, 0, x, y);
 	if (rc == 0)
-		WLog_WARN(TAG, "xf_Pointer_SetPosition: XWarpPointer==%d", rc);
+		WLog_WARN(TAG, "%s: XWarpPointer==%d", __func__, rc);
 	tmp.event_mask = current.your_event_mask;
 	rc = XChangeWindowAttributes(xfc->display, handle, CWEventMask, &tmp);
 	if (rc == 0)
-		WLog_WARN(TAG, "xf_Pointer_SetPosition: 2.try XChangeWindowAttributes==%d", rc);
+		WLog_WARN(TAG, "%s: 2.try XChangeWindowAttributes==%d", __func__, rc);
 	ret = TRUE;
 out:
 	xf_unlock_x11(xfc);
@@ -729,6 +770,8 @@ UINT32 xf_get_local_color_format(xfContext* xfc, BOOL aligned)
 
 	if (xfc->depth == 32)
 		DstFormat = (!invert) ? PIXEL_FORMAT_RGBA32 : PIXEL_FORMAT_BGRA32;
+	else if (xfc->depth == 30)
+		DstFormat = (!invert) ? PIXEL_FORMAT_RGBX32_DEPTH30 : PIXEL_FORMAT_BGRX32_DEPTH30;
 	else if (xfc->depth == 24)
 	{
 		if (aligned)

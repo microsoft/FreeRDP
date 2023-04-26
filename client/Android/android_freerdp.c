@@ -32,6 +32,7 @@
 #include <freerdp/client/rdpei.h>
 #include <freerdp/client/rdpgfx.h>
 #include <freerdp/client/cliprdr.h>
+#include <freerdp/codec/h264.h>
 #include <freerdp/channels/channels.h>
 #include <freerdp/client/channels.h>
 #include <freerdp/client/cmdline.h>
@@ -56,7 +57,7 @@
 #define TAG CLIENT_TAG("android")
 
 /* Defines the JNI version supported by this library. */
-#define FREERDP_JNI_VERSION "2.4.0"
+#define FREERDP_JNI_VERSION "2.10.0"
 
 static void android_OnChannelConnectedEventHandler(void* context, ChannelConnectedEventArgs* e)
 {
@@ -288,7 +289,7 @@ static BOOL android_Pointer_SetDefault(rdpContext* context)
 
 static BOOL android_register_pointer(rdpGraphics* graphics)
 {
-	rdpPointer pointer;
+	rdpPointer pointer = { 0 };
 
 	if (!graphics)
 		return FALSE;
@@ -522,7 +523,7 @@ static int android_freerdp_run(freerdp* instance)
 		count += tmp;
 		status = WaitForMultipleObjects(count, handles, FALSE, INFINITE);
 
-		if ((status == WAIT_FAILED))
+		if (status == WAIT_FAILED)
 		{
 			WLog_ERR(TAG, "WaitForMultipleObjects failed with %" PRIu32 " [%08lX]", status,
 			         GetLastError());
@@ -996,7 +997,7 @@ static jboolean JNICALL jni_freerdp_send_clipboard_data(JNIEnv* env, jclass cls,
 	ANDROID_EVENT* event;
 	freerdp* inst = (freerdp*)instance;
 	const jbyte* data = jdata != NULL ? (*env)->GetStringUTFChars(env, jdata, NULL) : NULL;
-	const size_t data_length = data ? (*env)->GetStringUTFLength(env, data) : 0;
+	const size_t data_length = data ? (*env)->GetStringUTFLength(env, jdata) : 0;
 	jboolean ret = JNI_FALSE;
 	event = (ANDROID_EVENT*)android_event_clipboard_new((void*)data, data_length);
 
@@ -1022,6 +1023,15 @@ out_fail:
 static jstring JNICALL jni_freerdp_get_jni_version(JNIEnv* env, jclass cls)
 {
 	return (*env)->NewStringUTF(env, FREERDP_JNI_VERSION);
+}
+
+static jboolean JNICALL jni_freerdp_has_h264(JNIEnv* env, jclass cls)
+{
+	H264_CONTEXT* ctx = h264_context_new(FALSE);
+	if (!ctx)
+		return JNI_FALSE;
+	h264_context_free(ctx);
+	return JNI_TRUE;
 }
 
 static jstring JNICALL jni_freerdp_get_version(JNIEnv* env, jclass cls)
@@ -1062,7 +1072,8 @@ static JNINativeMethod methods[] = {
 	{ "freerdp_send_cursor_event", "(JIII)Z", &jni_freerdp_send_cursor_event },
 	{ "freerdp_send_key_event", "(JIZ)Z", &jni_freerdp_send_key_event },
 	{ "freerdp_send_unicodekey_event", "(JIZ)Z", &jni_freerdp_send_unicodekey_event },
-	{ "freerdp_send_clipboard_data", "(JLjava/lang/String;)Z", &jni_freerdp_send_clipboard_data }
+	{ "freerdp_send_clipboard_data", "(JLjava/lang/String;)Z", &jni_freerdp_send_clipboard_data },
+	{ "freerdp_has_h264", "()Z", &jni_freerdp_has_h264 }
 };
 
 static jclass gJavaActivityClass = NULL;

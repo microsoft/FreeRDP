@@ -97,7 +97,13 @@ static wStream* urb_create_iocompletion(UINT32 InterfaceField, UINT32 MessageId,
                                         UINT32 OutputBufferSize)
 {
 	const UINT32 InterfaceId = (STREAM_ID_PROXY << 30) | (InterfaceField & 0x3FFFFFFF);
-	wStream* out = Stream_New(NULL, OutputBufferSize + 28);
+
+#if UINT32_MAX >= SIZE_MAX
+	if (OutputBufferSize > UINT32_MAX - 28ull)
+		return NULL;
+#endif
+
+	wStream* out = Stream_New(NULL, OutputBufferSize + 28ull);
 
 	if (!out)
 		return NULL;
@@ -241,6 +247,10 @@ static UINT urbdrc_process_io_control(IUDEVICE* pdev, URBDRC_CHANNEL_CALLBACK* c
 
 	Stream_Read_UINT32(s, OutputBufferSize);
 	Stream_Read_UINT32(s, RequestId);
+
+	if (OutputBufferSize > UINT32_MAX - 4)
+		return ERROR_INVALID_DATA;
+
 	InterfaceId = ((STREAM_ID_PROXY << 30) | pdev->get_ReqCompletion(pdev));
 	out = urb_create_iocompletion(InterfaceId, MessageId, RequestId, OutputBufferSize + 4);
 
@@ -673,7 +683,11 @@ static UINT urb_control_transfer(IUDEVICE* pdev, URBDRC_CHANNEL_CALLBACK* callba
 	buffer = Stream_Pointer(out);
 
 	if (transferDir == USBD_TRANSFER_DIRECTION_OUT)
+	{
+		if (!Stream_CheckAndLogRequiredLength(TAG, s, OutputBufferSize))
+			return ERROR_INVALID_DATA;
 		Stream_Copy(s, out, OutputBufferSize);
+	}
 
 	/**  process TS_URB_CONTROL_TRANSFER */
 	if (!pdev->control_transfer(pdev, RequestId, EndpointAddress, TransferFlags, bmRequestType,
@@ -720,6 +734,15 @@ static UINT urb_bulk_or_interrupt_transfer(IUDEVICE* pdev, URBDRC_CHANNEL_CALLBA
 	Stream_Read_UINT32(s, TransferFlags); /** TransferFlags */
 	Stream_Read_UINT32(s, OutputBufferSize);
 	EndpointAddress = (PipeHandle & 0x000000ff);
+
+	if (transferDir == USBD_TRANSFER_DIRECTION_OUT)
+	{
+		if (!Stream_CheckAndLogRequiredLength(TAG, s, OutputBufferSize))
+		{
+			return ERROR_INVALID_DATA;
+		}
+	}
+
 	/**  process TS_URB_BULK_OR_INTERRUPT_TRANSFER */
 	return pdev->bulk_or_interrupt_transfer(
 	    pdev, callback, MessageId, RequestId, EndpointAddress, TransferFlags, noAck,
@@ -804,6 +827,13 @@ static UINT urb_isoch_transfer(IUDEVICE* pdev, URBDRC_CHANNEL_CALLBACK* callback
 	packetDescriptorData = Stream_Pointer(s);
 	Stream_Seek(s, NumberOfPackets * 12);
 	Stream_Read_UINT32(s, OutputBufferSize);
+
+	if (transferDir == USBD_TRANSFER_DIRECTION_OUT)
+	{
+		if (!Stream_CheckAndLogRequiredLength(TAG, s, OutputBufferSize))
+			return ERROR_INVALID_DATA;
+	}
+
 	return pdev->isoch_transfer(
 	    pdev, callback, MessageId, RequestId, EndpointAddress, TransferFlags, StartFrame,
 	    ErrorCount, noAck, packetDescriptorData, NumberOfPackets, OutputBufferSize,
@@ -1747,6 +1777,13 @@ static UINT urbdrc_process_transfer_request(IUDEVICE* pdev, URBDRC_CHANNEL_CALLB
 			WLog_Print(urbdrc->log, WLOG_DEBUG, "URB_Func: %" PRIx16 " is not found!",
 			           URB_Function);
 			break;
+	}
+
+	if (error)
+	{
+		WLog_Print(urbdrc->log, WLOG_WARN,
+		           "USB transfer request URB Function %08" PRIx32 " failed with %08" PRIx32,
+		           URB_Function, error);
 	}
 
 	return error;

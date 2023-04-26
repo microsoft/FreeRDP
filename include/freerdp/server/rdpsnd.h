@@ -32,11 +32,21 @@ typedef struct _rdpsnd_server_private RdpsndServerPrivate;
 typedef UINT (*psRdpsndStart)(RdpsndServerContext* context);
 typedef UINT (*psRdpsndStop)(RdpsndServerContext* context);
 
+typedef BOOL (*psRdpsndChannelIdAssigned)(RdpsndServerContext* context, UINT32 channelId);
+
 typedef UINT (*psRdpsndServerInitialize)(RdpsndServerContext* context, BOOL ownThread);
+typedef UINT (*psRdpsndServerSendFormats)(RdpsndServerContext* context);
 typedef UINT (*psRdpsndServerSelectFormat)(RdpsndServerContext* context,
                                            UINT16 client_format_index);
+typedef UINT (*psRdpsndServerTraining)(RdpsndServerContext* context, UINT16 timestamp,
+                                       UINT16 packsize, BYTE* data);
+typedef UINT (*psRdpsndServerTrainingConfirm)(RdpsndServerContext* context, UINT16 timestamp,
+                                              UINT16 packsize);
 typedef UINT (*psRdpsndServerSendSamples)(RdpsndServerContext* context, const void* buf,
                                           int nframes, UINT16 wTimestamp);
+typedef UINT (*psRdpsndServerSendSamples2)(RdpsndServerContext* context, UINT16 formatNo,
+                                           const void* buf, size_t size, UINT16 timestamp,
+                                           UINT32 audioTimeStamp);
 typedef UINT (*psRdpsndServerConfirmBlock)(RdpsndServerContext* context, BYTE confirmBlockNum,
                                            UINT16 wtimestamp);
 typedef UINT (*psRdpsndServerSetVolume)(RdpsndServerContext* context, int left, int right);
@@ -55,9 +65,6 @@ struct _rdpsnd_server_context
 
 	/* Server self-defined pointer. */
 	void* data;
-
-	/* Server to request to use dynamic virtual channel. */
-	BOOL use_dynamic_virtual_channel;
 
 	/* Server supported formats. Set by server. */
 	AUDIO_FORMAT* server_formats;
@@ -122,6 +129,46 @@ struct _rdpsnd_server_context
 	UINT16 clientVersion;
 
 	rdpContext* rdpcontext;
+
+	/* Server to request to use dynamic virtual channel. */
+	BOOL use_dynamic_virtual_channel;
+
+	/* dwFlags in CLIENT_AUDIO_VERSION_AND_FORMATS */
+	UINT32 capsFlags;
+	/* dwVolume in CLIENT_AUDIO_VERSION_AND_FORMATS */
+	UINT32 initialVolume;
+	/* dwPitch in CLIENT_AUDIO_VERSION_AND_FORMATS */
+	UINT32 initialPitch;
+
+	UINT16 qualityMode;
+
+	/**
+	 * Send server formats and version to the client. Automatically sent, when
+	 * opening the channel.
+	 * Also used to restart the protocol after sending the Close PDU.
+	 */
+	psRdpsndServerSendFormats SendFormats;
+	/**
+	 * Send Training PDU.
+	 */
+	psRdpsndServerTraining Training;
+
+	/**
+	 * Send encoded audio samples using a Wave2 PDU.
+	 * When successful, the block_no member is incremented.
+	 */
+	psRdpsndServerSendSamples2 SendSamples2;
+
+	/**
+	 * Called when a TrainingConfirm PDU is received from the client.
+	 */
+	psRdpsndServerTrainingConfirm TrainingConfirm;
+
+	/**
+	 * Callback, when the channel got its id assigned.
+	 * Only called, when use_dynamic_virtual_channel=TRUE.
+	 */
+	psRdpsndChannelIdAssigned ChannelIdAssigned;
 };
 
 #ifdef __cplusplus

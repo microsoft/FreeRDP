@@ -52,6 +52,7 @@
 #include <freerdp/cache/pointer.h>
 
 #include "settings.h"
+#include "utils.h"
 
 #define TAG FREERDP_TAG("core")
 
@@ -168,7 +169,9 @@ BOOL freerdp_connect(freerdp* instance)
 #endif
 	freerdp_set_last_error_log(instance->context, FREERDP_ERROR_SUCCESS);
 	clearChannelError(instance->context);
-	ResetEvent(instance->context->abortEvent);
+	if (!utils_reset_abort(instance->context))
+		return FALSE;
+
 	rdp = instance->context->rdp;
 	settings = instance->settings;
 
@@ -181,7 +184,8 @@ BOOL freerdp_connect(freerdp* instance)
 	if (status)
 		status2 = freerdp_channels_pre_connect(instance->context->channels, instance);
 
-	if (settings->KeyboardLayout == KBD_JAPANESE_INPUT_SYSTEM_MS_IME2002)
+	if (settings->KeyboardLayout == KBD_JAPANESE ||
+	    settings->KeyboardLayout == KBD_JAPANESE_INPUT_SYSTEM_MS_IME2002)
 	{
 		settings->KeyboardType = 7;
 		settings->KeyboardSubType = 2;
@@ -307,7 +311,8 @@ BOOL freerdp_abort_connect(freerdp* instance)
 	if (!instance || !instance->context)
 		return FALSE;
 
-	return SetEvent(instance->context->abortEvent);
+	freerdp_set_last_error_if_not(instance->context, FREERDP_ERROR_CONNECT_CANCELLED);
+	return utils_abort_connect(instance->context);
 }
 
 BOOL freerdp_get_fds(freerdp* instance, void** rfds, int* rcount, void** wfds, int* wcount)
@@ -539,11 +544,16 @@ BOOL freerdp_disconnect_before_reconnect(freerdp* instance)
 
 BOOL freerdp_reconnect(freerdp* instance)
 {
-	BOOL status;
-	rdpRdp* rdp = instance->context->rdp;
-	ResetEvent(instance->context->abortEvent);
-	status = rdp_client_reconnect(rdp);
-	return status;
+	rdpRdp* rdp;
+
+	if (freerdp_get_last_error(instance->context) == FREERDP_ERROR_CONNECT_CANCELLED)
+		return FALSE;
+
+	rdp = instance->context->rdp;
+
+	if (!utils_reset_abort(instance->context))
+		return FALSE;
+	return rdp_client_reconnect(rdp);
 }
 
 BOOL freerdp_shall_disconnect(freerdp* instance)
@@ -885,7 +895,7 @@ void freerdp_set_last_error_ex(rdpContext* context, UINT32 lastError, const char
 
 	if (lastError == FREERDP_ERROR_SUCCESS)
 	{
-		WLog_INFO(TAG, "%s:%s resetting error state", fkt, __FUNCTION__);
+		WLog_DBG(TAG, "%s:%s resetting error state", fkt, __FUNCTION__);
 	}
 	else if (context->LastError != FREERDP_ERROR_SUCCESS)
 	{
@@ -1124,4 +1134,15 @@ const char* freerdp_nego_get_routing_token(rdpContext* context, DWORD* length)
 		return NULL;
 
 	return (const char*)nego_get_routing_token(context->rdp->nego, length);
+}
+
+CONNECTION_STATE freerdp_get_state(rdpContext* context)
+{
+	WINPR_ASSERT(context);
+	return rdp_get_state(context->rdp);
+}
+
+const char* freerdp_state_string(CONNECTION_STATE state)
+{
+	return rdp_state_string(state);
 }

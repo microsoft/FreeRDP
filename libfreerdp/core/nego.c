@@ -277,6 +277,9 @@ static BOOL nego_tcp_connect(rdpNego* nego)
 {
 	if (!nego->TcpConnected)
 	{
+		const UINT32 TcpConnectTimeout = freerdp_settings_get_uint32(
+		    nego->transport->context->settings, FreeRDP_TcpConnectTimeout);
+
 		if (nego->GatewayEnabled)
 		{
 			if (nego->GatewayBypassLocal)
@@ -286,20 +289,21 @@ static BOOL nego_tcp_connect(rdpNego* nego)
 				          "Detecting if host can be reached locally. - This might take some time.");
 				WLog_INFO(TAG, "To disable auto detection use /gateway-usage-method:direct");
 				transport_set_gateway_enabled(nego->transport, FALSE);
-				nego->TcpConnected =
-				    transport_connect(nego->transport, nego->hostname, nego->port, 1);
+				nego->TcpConnected = transport_connect(nego->transport, nego->hostname, nego->port,
+				                                       TcpConnectTimeout);
 			}
 
 			if (!nego->TcpConnected)
 			{
 				transport_set_gateway_enabled(nego->transport, TRUE);
-				nego->TcpConnected =
-				    transport_connect(nego->transport, nego->hostname, nego->port, 15);
+				nego->TcpConnected = transport_connect(nego->transport, nego->hostname, nego->port,
+				                                       TcpConnectTimeout);
 			}
 		}
 		else
 		{
-			nego->TcpConnected = transport_connect(nego->transport, nego->hostname, nego->port, 15);
+			nego->TcpConnected =
+			    transport_connect(nego->transport, nego->hostname, nego->port, TcpConnectTimeout);
 		}
 	}
 
@@ -708,6 +712,7 @@ static BOOL nego_read_request_token_or_cookie(rdpNego* nego, wStream* s)
 	{
 		if (memcmp(Stream_Pointer(s), "Cookie: msts=", 13) != 0)
 		{
+			/* remaining bytes are neither a token nor a cookie */
 			return TRUE;
 		}
 		isToken = TRUE;
@@ -805,9 +810,12 @@ BOOL nego_read_request(rdpNego* nego, wStream* s)
 			return FALSE;
 	}
 
+	/* Skip over optional RDP_NEG_CORRELATION_INFO
+	 *  see MS-RDPBCGR 2.2.1.1.2 RDP Correlation Info (RDP_NEG_CORRELATION_INFO)
+	 */
 	if (Stream_GetRemainingLength(s) >= 36)
 	{
-		Stream_Seek(s,36); 
+		Stream_Seek(s, 36);
 	}
 
 	return tpkt_ensure_stream_consumed(s, length);
@@ -950,6 +958,28 @@ BOOL nego_process_negotiation_request(rdpNego* nego, wStream* s)
  * @param nego
  * @param s
  */
+static const char* nego_rdp_neg_rsp_flags_str(UINT32 flags)
+{
+	static char buffer[1024] = { 0 };
+
+	_snprintf(buffer, ARRAYSIZE(buffer), "[0x%02" PRIx32 "] ", flags);
+	if (flags & EXTENDED_CLIENT_DATA_SUPPORTED)
+		winpr_str_append("EXTENDED_CLIENT_DATA_SUPPORTED", buffer, sizeof(buffer), "|");
+	if (flags & DYNVC_GFX_PROTOCOL_SUPPORTED)
+		winpr_str_append("DYNVC_GFX_PROTOCOL_SUPPORTED", buffer, sizeof(buffer), "|");
+	if (flags & RDP_NEGRSP_RESERVED)
+		winpr_str_append("RDP_NEGRSP_RESERVED", buffer, sizeof(buffer), "|");
+	if (flags & RESTRICTED_ADMIN_MODE_SUPPORTED)
+		winpr_str_append("RESTRICTED_ADMIN_MODE_SUPPORTED", buffer, sizeof(buffer), "|");
+	if (flags & REDIRECTED_AUTHENTICATION_MODE_SUPPORTED)
+		winpr_str_append("REDIRECTED_AUTHENTICATION_MODE_SUPPORTED", buffer, sizeof(buffer), "|");
+	if ((flags &
+	     ~(EXTENDED_CLIENT_DATA_SUPPORTED | DYNVC_GFX_PROTOCOL_SUPPORTED | RDP_NEGRSP_RESERVED |
+	       RESTRICTED_ADMIN_MODE_SUPPORTED | REDIRECTED_AUTHENTICATION_MODE_SUPPORTED)))
+		winpr_str_append("UNKNOWN", buffer, sizeof(buffer), "|");
+
+	return buffer;
+}
 
 BOOL nego_process_negotiation_response(rdpNego* nego, wStream* s)
 {
@@ -964,6 +994,7 @@ BOOL nego_process_negotiation_response(rdpNego* nego, wStream* s)
 	}
 
 	Stream_Read_UINT8(s, nego->flags);
+	WLog_DBG(TAG, "RDP_NEG_RSP::flags = { %s }", nego_rdp_neg_rsp_flags_str(nego->flags));
 	Stream_Read_UINT16(s, length);
 	Stream_Read_UINT32(s, nego->SelectedProtocol);
 	nego->state = NEGO_STATE_FINAL;
@@ -1121,7 +1152,8 @@ BOOL nego_send_negotiation_response(rdpNego* nego)
 				settings->UseRdpSecurityLayer = FALSE;
 				settings->EncryptionLevel = ENCRYPTION_LEVEL_NONE;
 			}
-			else if (!settings->RdpServerRsaKey && !settings->RdpKeyFile && !settings->RdpKeyContent)
+			else if (!settings->RdpServerRsaKey && !settings->RdpKeyFile &&
+			         !settings->RdpKeyContent)
 			{
 				WLog_ERR(TAG, "Missing server certificate");
 				return FALSE;

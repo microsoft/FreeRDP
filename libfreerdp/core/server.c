@@ -158,6 +158,7 @@ static BOOL wts_read_drdynvc_capabilities_response(rdpPeerChannel* channel, UINT
 static BOOL wts_read_drdynvc_create_response(rdpPeerChannel* channel, wStream* s, UINT32 length)
 {
 	UINT32 CreationStatus;
+	BOOL status = TRUE;
 
 	if (length < 4)
 		return FALSE;
@@ -176,7 +177,12 @@ static BOOL wts_read_drdynvc_create_response(rdpPeerChannel* channel, wStream* s
 		channel->dvc_open_state = DVC_OPEN_STATE_SUCCEEDED;
 	}
 
-	return TRUE;
+	IFCALLRET(channel->vcm->dvc_creation_status, status, channel->vcm->dvc_creation_status_userdata,
+	          channel->channelId, (INT32)CreationStatus);
+	if (!status)
+		WLog_ERR(TAG, "vcm->dvc_creation_status failed!");
+
+	return status;
 }
 
 static BOOL wts_read_drdynvc_data_first(rdpPeerChannel* channel, wStream* s, int cbLen,
@@ -285,9 +291,27 @@ static BOOL wts_read_drdynvc_pdu(rdpPeerChannel* channel)
 					return wts_read_drdynvc_create_response(dvc, channel->receiveData, length);
 
 				case DATA_FIRST_PDU:
+					if (dvc->dvc_open_state != DVC_OPEN_STATE_SUCCEEDED)
+					{
+						WLog_ERR(TAG,
+						         "ChannelId %" PRIu32 " did not open successfully. "
+						         "Ignoring DYNVC_DATA_FIRST PDU",
+						         ChannelId);
+						return TRUE;
+					}
+
 					return wts_read_drdynvc_data_first(dvc, channel->receiveData, Sp, length);
 
 				case DATA_PDU:
+					if (dvc->dvc_open_state != DVC_OPEN_STATE_SUCCEEDED)
+					{
+						WLog_ERR(TAG,
+						         "ChannelId %" PRIu32 " did not open successfully. "
+						         "Ignoring DYNVC_DATA PDU",
+						         ChannelId);
+						return TRUE;
+					}
+
 					return wts_read_drdynvc_data(dvc, channel->receiveData, length);
 
 				case CLOSE_REQUEST_PDU:
@@ -578,6 +602,17 @@ BYTE WTSVirtualChannelManagerGetDrdynvcState(HANDLE hServer)
 	return vcm->drdynvc_state;
 }
 
+void WTSVirtualChannelManagerSetDVCCreationCallback(HANDLE hServer, psDVCCreationStatusCallback cb,
+                                                    void* userdata)
+{
+	WTSVirtualChannelManager* vcm = hServer;
+
+	WINPR_ASSERT(vcm);
+
+	vcm->dvc_creation_status = cb;
+	vcm->dvc_creation_status_userdata = userdata;
+}
+
 UINT16 WTSChannelGetId(freerdp_peer* client, const char* channel_name)
 {
 	rdpMcsChannel* channel;
@@ -591,6 +626,15 @@ UINT16 WTSChannelGetId(freerdp_peer* client, const char* channel_name)
 		return 0;
 
 	return channel->ChannelId;
+}
+
+UINT32 WTSChannelGetIdByHandle(HANDLE hChannelHandle)
+{
+	rdpPeerChannel* channel = hChannelHandle;
+
+	WINPR_ASSERT(channel);
+
+	return channel->channelId;
 }
 
 BOOL WTSChannelSetHandleByName(freerdp_peer* client, const char* channel_name, void* handle)
@@ -668,6 +712,43 @@ const char* WTSChannelGetName(freerdp_peer* client, UINT16 channel_id)
 		return NULL;
 
 	return (const char*)channel->Name;
+}
+
+INT64 WTSChannelGetOptions(freerdp_peer* client, UINT16 channel_id)
+{
+	rdpMcsChannel* channel;
+
+	if (!client || !client->context || !client->context->rdp)
+		return -1;
+
+	channel = wts_get_joined_channel_by_id(client->context->rdp->mcs, channel_id);
+
+	if (!channel)
+		return -1;
+
+	return (INT64)channel->options;
+}
+
+char** WTSGetAcceptedChannelNames(freerdp_peer* client, size_t* count)
+{
+	rdpMcs* mcs;
+	char** names;
+	UINT32 index;
+
+	if (!client || !client->context || !count)
+		return NULL;
+
+	mcs = client->context->rdp->mcs;
+	*count = mcs->channelCount;
+
+	names = (char**)calloc(mcs->channelCount, sizeof(char*));
+	if (!names)
+		return NULL;
+
+	for (index = 0; index < mcs->channelCount; index++)
+		names[index] = mcs->channels[index].Name;
+
+	return names;
 }
 
 BOOL WINAPI FreeRDP_WTSStartRemoteControlSessionW(LPWSTR pTargetServerName, ULONG TargetLogonId,

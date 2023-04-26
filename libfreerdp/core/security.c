@@ -719,18 +719,19 @@ BOOL security_encrypt(BYTE* data, size_t length, rdpRdp* rdp)
 {
 	BOOL rc = FALSE;
 	EnterCriticalSection(&rdp->critical);
+	if (!rdp->rc4_encrypt_key)
+	{
+		WLog_ERR(TAG, "[%s] rdp->rc4_encrypt_key=%p", __FUNCTION__, rdp->rc4_encrypt_key);
+		goto fail;
+	}
+
 	if (rdp->encrypt_use_count >= 4096)
 	{
 		if (!security_key_update(rdp->encrypt_key, rdp->encrypt_update_key, rdp->rc4_key_len, rdp))
 			goto fail;
 
-		winpr_RC4_Free(rdp->rc4_encrypt_key);
-		rdp->rc4_encrypt_key = winpr_RC4_New(rdp->encrypt_key, rdp->rc4_key_len);
-
-		if (!rdp->rc4_encrypt_key)
+		if (!rdp_reset_rc4_encrypt_keys(rdp))
 			goto fail;
-
-		rdp->encrypt_use_count = 0;
 	}
 
 	if (!winpr_RC4_Update(rdp->rc4_encrypt_key, length, data, data))
@@ -748,21 +749,19 @@ BOOL security_decrypt(BYTE* data, size_t length, rdpRdp* rdp)
 {
 	BOOL rc = FALSE;
 	EnterCriticalSection(&rdp->critical);
-	if (rdp->rc4_decrypt_key == NULL)
+	if (!rdp->rc4_decrypt_key)
+	{
+		WLog_ERR(TAG, "[%s] rdp->rc4_decrypt_key=%p", __FUNCTION__, rdp->rc4_decrypt_key);
 		goto fail;
+	}
 
 	if (rdp->decrypt_use_count >= 4096)
 	{
 		if (!security_key_update(rdp->decrypt_key, rdp->decrypt_update_key, rdp->rc4_key_len, rdp))
 			goto fail;
 
-		winpr_RC4_Free(rdp->rc4_decrypt_key);
-		rdp->rc4_decrypt_key = winpr_RC4_New(rdp->decrypt_key, rdp->rc4_key_len);
-
-		if (!rdp->rc4_decrypt_key)
+		if (!rdp_reset_rc4_decrypt_keys(rdp))
 			goto fail;
-
-		rdp->decrypt_use_count = 0;
 	}
 
 	if (!winpr_RC4_Update(rdp->rc4_decrypt_key, length, data, data))

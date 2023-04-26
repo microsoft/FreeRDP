@@ -1570,7 +1570,7 @@ xf_cliprdr_server_format_data_response(CliprdrClientContext* context,
 	{
 		if (SrcSize == 0)
 		{
-			WLog_INFO(TAG, "skipping, empty data detected!!!");
+			WLog_DBG(TAG, "skipping, empty data detected!");
 			free(clipboard->respond);
 			clipboard->respond = NULL;
 			return CHANNEL_RC_OK;
@@ -1756,7 +1756,27 @@ static UINT xf_cliprdr_clipboard_file_range_failure(wClipboardDelegate* delegate
 	return clipboard->context->ClientFileContentsResponse(clipboard->context, &response);
 }
 
-xfClipboard* xf_clipboard_new(xfContext* xfc)
+static BOOL xf_cliprdr_clipboard_is_valid_unix_filename(LPCWSTR filename)
+{
+	LPCWSTR c;
+
+	if (!filename)
+		return FALSE;
+
+	if (filename[0] == L'\0')
+		return FALSE;
+
+	/* Reserved characters */
+	for (c = filename; *c; ++c)
+	{
+		if (*c == L'/')
+			return FALSE;
+	}
+
+	return TRUE;
+}
+
+xfClipboard* xf_clipboard_new(xfContext* xfc, BOOL relieveFilenameRestriction)
 {
 	int i, n = 0;
 	rdpChannels* channels;
@@ -1885,6 +1905,13 @@ xfClipboard* xf_clipboard_new(xfContext* xfc)
 	clipboard->delegate->ClipboardFileSizeFailure = xf_cliprdr_clipboard_file_size_failure;
 	clipboard->delegate->ClipboardFileRangeSuccess = xf_cliprdr_clipboard_file_range_success;
 	clipboard->delegate->ClipboardFileRangeFailure = xf_cliprdr_clipboard_file_range_failure;
+
+	if (relieveFilenameRestriction)
+	{
+		WLog_DBG(TAG, "Relieving CLIPRDR filename restriction");
+		clipboard->delegate->IsFileNameComponentValid = xf_cliprdr_clipboard_is_valid_unix_filename;
+	}
+
 	return clipboard;
 error:
 

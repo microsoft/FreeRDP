@@ -154,12 +154,16 @@ static UINT audin_mac_set_format(IAudinDevice *device, const AUDIO_FORMAT *forma
 	if (format->wBitsPerSample == 0)
 		mac->audioFormat.mBitsPerChannel = 16;
 
-	mac->audioFormat.mBytesPerFrame = 0;
-	mac->audioFormat.mBytesPerPacket = 0;
 	mac->audioFormat.mChannelsPerFrame = mac->format.nChannels;
+	mac->audioFormat.mFramesPerPacket = 1;
+
+	mac->audioFormat.mBytesPerFrame =
+	    mac->audioFormat.mChannelsPerFrame * (mac->audioFormat.mBitsPerChannel / 8);
+	mac->audioFormat.mBytesPerPacket =
+	    mac->audioFormat.mBytesPerFrame * mac->audioFormat.mFramesPerPacket;
+
 	mac->audioFormat.mFormatFlags = audin_mac_get_flags_for_format(format);
 	mac->audioFormat.mFormatID = audin_mac_get_format(format);
-	mac->audioFormat.mFramesPerPacket = 1;
 	mac->audioFormat.mReserved = 0;
 	mac->audioFormat.mSampleRate = mac->format.nSamplesPerSec;
 	return CHANNEL_RC_OK;
@@ -423,32 +427,34 @@ UINT freerdp_audin_client_subsystem_entry(PFREERDP_AUDIN_DEVICE_ENTRY_POINTS pEn
 #if defined(MAC_OS_X_VERSION_10_14)
 	if (@available(macOS 10.14, *))
 	{
-		AVAuthorizationStatus status =
-		    [AVCaptureDevice authorizationStatusForMediaType:AVMediaTypeAudio];
-		switch (status)
-		{
-			case AVAuthorizationStatusAuthorized:
-				mac->isAuthorized = TRUE;
-				break;
-			case AVAuthorizationStatusNotDetermined:
-				[AVCaptureDevice requestAccessForMediaType:AVMediaTypeAudio
-				                         completionHandler:^(BOOL granted) {
-					                         if (granted == YES)
-					                         {
-						                         mac->isAuthorized = TRUE;
-					                         }
-					                         else
-						                         WLog_WARN(TAG, "Microphone access denied by user");
-				                         }];
-				break;
-			case AVAuthorizationStatusRestricted:
-				WLog_WARN(TAG, "Microphone access restricted by policy");
-				break;
-			case AVAuthorizationStatusDenied:
-				WLog_WARN(TAG, "Microphone access denied by policy");
-				break;
-			default:
-				break;
+		@autoreleasepool {
+			AVAuthorizationStatus status =
+				[AVCaptureDevice authorizationStatusForMediaType:AVMediaTypeAudio];
+			switch (status)
+			{
+				case AVAuthorizationStatusAuthorized:
+					mac->isAuthorized = TRUE;
+					break;
+				case AVAuthorizationStatusNotDetermined:
+					[AVCaptureDevice requestAccessForMediaType:AVMediaTypeAudio
+											 completionHandler:^(BOOL granted) {
+												 if (granted == YES)
+												 {
+													 mac->isAuthorized = TRUE;
+												 }
+												 else
+													 WLog_WARN(TAG, "Microphone access denied by user");
+											 }];
+					break;
+				case AVAuthorizationStatusRestricted:
+					WLog_WARN(TAG, "Microphone access restricted by policy");
+					break;
+				case AVAuthorizationStatusDenied:
+					WLog_WARN(TAG, "Microphone access denied by policy");
+					break;
+				default:
+					break;
+			}
 		}
 	}
 #endif

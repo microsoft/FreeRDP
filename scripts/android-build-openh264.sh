@@ -1,6 +1,7 @@
 #!/bin/bash
-SCM_URL=https://github.com/cisco/openh264
-SCM_TAG=master
+SCM_URL=https://github.com/cisco/openh264/archive
+SCM_TAG=v2.3.1
+SCM_HASH=453afa66dacb560bc5fd0468aabee90c483741571bca820a39a1c07f0362dc32
 
 source $(dirname "${BASH_SOURCE[0]}")/android-build-common.sh
 
@@ -9,8 +10,8 @@ function build {
 	BASE=$(pwd)
 	common_run cd $BUILD_SRC
 	PATH=$ANDROID_NDK:$PATH
-	MAKE="make PATH=$PATH ENABLEPIC=Yes OS=android NDKROOT=$ANDROID_NDK TARGET=android-$2 NDKLEVEL=$2 ARCH=$1 -j libraries"
-	
+	MAKE="make PATH=$PATH ENABLEPIC=Yes OS=android NDKROOT=$ANDROID_NDK NDK_TOOLCHAIN_VERSION=clang TARGET=android-$2 NDKLEVEL=$2 ARCH=$1 -j libraries"
+
 	common_run export QUIET_AR="$CCACHE "
 	common_run export QUIET_ASM="$CCACHE "
 	common_run export QUIET_CC="$CCACHE "
@@ -26,7 +27,7 @@ function build {
 # Run the main program.
 common_parse_arguments $@
 common_check_requirements
-common_update $SCM_URL $SCM_TAG $BUILD_SRC
+common_update $SCM_URL $SCM_TAG $BUILD_SRC $SCM_HASH
 
 
 for ARCH in $BUILD_ARCH

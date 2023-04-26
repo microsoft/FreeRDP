@@ -32,41 +32,47 @@
 
 #ifndef _WIN32
 
+#include <unistd.h>
+
+#ifndef _write
+#define _write write
+#endif
+
 #ifndef _strtoui64
 #define _strtoui64 strtoull
-#endif
+#endif /* _strtoui64 */
 
 #ifndef _strtoi64
 #define _strtoi64 strtoll
-#endif
+#endif /* _strtoi64 */
 
 #ifndef _rotl
 static INLINE UINT32 _rotl(UINT32 value, int shift)
 {
 	return (value << shift) | (value >> (32 - shift));
 }
-#endif
+#endif /* _rotl */
 
 #ifndef _rotl64
 static INLINE UINT64 _rotl64(UINT64 value, int shift)
 {
 	return (value << shift) | (value >> (64 - shift));
 }
-#endif
+#endif /* _rotl64 */
 
 #ifndef _rotr
 static INLINE UINT32 _rotr(UINT32 value, int shift)
 {
 	return (value >> shift) | (value << (32 - shift));
 }
-#endif
+#endif /* _rotr */
 
 #ifndef _rotr64
 static INLINE UINT64 _rotr64(UINT64 value, int shift)
 {
 	return (value >> shift) | (value << (64 - shift));
 }
-#endif
+#endif /* _rotr64 */
 
 #if (__GNUC__ > 4) || ((__GNUC__ == 4) && (__GNUC_MINOR__ >= 2))
 
@@ -89,7 +95,7 @@ static INLINE UINT64 _byteswap_uint64(UINT64 _val)
 	        ((_val) >> 56));
 }
 
-#endif
+#endif /* (__GNUC__ > 4) || ... */
 
 #if (__GNUC__ > 4) || ((__GNUC__ == 4) && (__GNUC_MINOR__ >= 8))
 
@@ -102,7 +108,7 @@ static INLINE UINT16 _byteswap_ushort(UINT16 _val)
 	return (((_val) >> 8) | ((_val) << 8));
 }
 
-#endif
+#endif /* (__GNUC__ > 4) || ... */
 
 #define CopyMemory(Destination, Source, Length) memcpy((Destination), (Source), (Length))
 #define MoveMemory(Destination, Source, Length) memmove((Destination), (Source), (Length))
@@ -125,7 +131,7 @@ extern "C"
 #ifndef _ERRNO_T_DEFINED
 #define _ERRNO_T_DEFINED
 typedef int errno_t;
-#endif
+#endif /* _ERRNO_T_DEFINED */
 
 #ifdef __cplusplus
 extern "C"
@@ -160,6 +166,6 @@ extern "C"
 }
 #endif
 
-#endif
+#endif /* _WIN32 */
 
 #endif /* WINPR_CRT_H */

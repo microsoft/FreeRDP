@@ -25,6 +25,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <inttypes.h>
 #include <assert.h>
 #include <errno.h>
 #include <time.h>
@@ -71,8 +72,8 @@ static struct wl_buffer* create_pointer_buffer(UwacSeat* seat, const void* src, 
 	wl_shm_pool_destroy(pool);
 
 	if (munmap(data, size) < 0)
-		fprintf(stderr, "%s: munmap(%p, %" PRIuz ") failed with [%d] %s\n", __FUNCTION__, data,
-		        size, errno, strerror(errno));
+		fprintf(stderr, "%s: munmap(%p, %z) failed with [%d] %s\n", __FUNCTION__, data, size, errno,
+		        strerror(errno));
 
 error_mmap:
 	close(fd);
@@ -136,7 +137,7 @@ static UwacReturnCode set_cursor_image(UwacSeat* seat, uint32_t serial)
 
 	if (surface && buffer_add_listener_success > -1)
 	{
-		wl_surface_attach(surface, buffer, -x, -y);
+		wl_surface_attach(surface, buffer, 0, 0);
 		wl_surface_damage(surface, 0, 0, image->width, image->height);
 		wl_surface_commit(surface);
 	}
@@ -731,6 +732,7 @@ static void pointer_handle_enter(void* data, struct wl_pointer* pointer, uint32_
 	}
 
 	input->display->serial = serial;
+	input->display->pointer_focus_serial = serial;
 	window = wl_surface_get_user_data(surface);
 	if (window)
 		window->pointer_enter_serial = serial;
@@ -1161,5 +1163,5 @@ UwacReturnCode UwacSeatSetMouseCursor(UwacSeat* seat, const void* data, size_t l
 	{
 		seat->pointer_type = 1;
 	}
-	return set_cursor_image(seat, seat->display->serial);
+	return set_cursor_image(seat, seat->display->pointer_focus_serial);
 }

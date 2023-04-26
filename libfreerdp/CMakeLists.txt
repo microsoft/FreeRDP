@@ -211,19 +211,18 @@ if(FAAC_FOUND)
 endif()
 
 if(WITH_NEON)
-    set_source_files_properties(${CODEC_NEON_SRCS} PROPERTIES COMPILE_FLAGS "-mfpu=neon -Wno-unused-variable" )
+    check_symbol_exists("_M_AMD64"     ""  MSVC_ARM64)
+    check_symbol_exists("__aarch64__"  ""  ARCH_ARM64)
+
+    if (NOT MSVC_ARM64 AND NOT ARCH_ARM64)
+        set_source_files_properties(${CODEC_NEON_SRCS} PROPERTIES COMPILE_FLAGS "-mfpu=neon" )
+    endif()
     set(CODEC_SRCS ${CODEC_SRCS} ${CODEC_NEON_SRCS})
 endif()
 
 if(WITH_JPEG)
     freerdp_include_directory_add(${JPEG_INCLUDE_DIR})
     freerdp_library_add(${JPEG_LIBRARIES})
-endif()
-
-if(WITH_X264)
-    set(CODEC_SRCS ${CODEC_SRCS} codec/h264_x264.c)
-    freerdp_include_directory_add(${X264_INCLUDE_DIR})
-    freerdp_library_add(${X264_LIBRARIES})
 endif()
 
 if(WITH_OPENH264)
@@ -242,6 +241,10 @@ endif()
 
 if(WIN32 AND WITH_MEDIA_FOUNDATION)
     set(CODEC_SRCS ${CODEC_SRCS} codec/h264_mf.c)
+endif()
+
+if(ANDROID AND WITH_MEDIACODEC)
+    list(APPEND CODEC_SRCS codec/h264_mediacodec.c)
 endif()
 
 freerdp_module_add(${CODEC_SRCS})
@@ -310,7 +313,7 @@ freerdp_definition_add(-DCMAKE_BUILD_TYPE=${CMAKE_BUILD_TYPE})
 
 ### IPP Variable debugging
 if(WITH_IPP)
-    if(CMAKE_COMPILER_IS_GNUCC)
+    if(CMAKE_COMPILER_IS_GNUCC OR ${CMAKE_C_COMPILER_ID} STREQUAL "Clang")
         foreach(INCLDIR ${IPP_INCLUDE_DIRS})
             set(OPTIMIZATION "${OPTIMIZATION} -I${INCLDIR}")
         endforeach(INCLDIR)
@@ -332,9 +335,11 @@ if(WITH_SSE2)
             PROPERTIES COMPILE_FLAGS "${OPTIMIZATION} /arch:SSE2")
     endif()
 elseif(WITH_NEON)
-    if(CMAKE_COMPILER_IS_GNUCC)
-        set_source_files_properties(${PRIMITIVES_OPT_SRCS}
-            PROPERTIES COMPILE_FLAGS "${OPTIMIZATION} -mfpu=neon")
+    if(CMAKE_COMPILER_IS_GNUCC OR ${CMAKE_C_COMPILER_ID} STREQUAL "Clang")
+        if (NOT MSVC_ARM64 AND NOT ARCH_ARM64)
+            set_source_files_properties(${PRIMITIVES_OPT_SRCS}
+                PROPERTIES COMPILE_FLAGS "${OPTIMIZATION} -mfpu=neon")
+        endif()
     endif()
     # TODO: Add MSVC equivalent
 endif()

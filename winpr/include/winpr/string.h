@@ -31,6 +31,9 @@ extern "C"
 {
 #endif
 
+	WINPR_API BOOL winpr_str_append(const char* what, char* buffer, size_t size,
+	                                const char* separator);
+
 #ifndef _WIN32
 
 #define CSTR_LESS_THAN 1
@@ -57,9 +60,12 @@ extern "C"
 	WINPR_API int _strnicmp(const char* string1, const char* string2, size_t count);
 
 	WINPR_API int _wcscmp(const WCHAR* string1, const WCHAR* string2);
+	WINPR_API int _wcsncmp(const WCHAR* string1, const WCHAR* string2, size_t count);
 
 	WINPR_API size_t _wcslen(const WCHAR* str);
 	WINPR_API size_t _wcsnlen(const WCHAR* str, size_t maxNumberOfElements);
+
+	WINPR_API WCHAR* _wcsstr(const WCHAR* str, const WCHAR* strSearch);
 
 	WINPR_API WCHAR* _wcschr(const WCHAR* str, WCHAR c);
 	WINPR_API WCHAR* _wcsrchr(const WCHAR* str, WCHAR c);
@@ -70,12 +76,14 @@ extern "C"
 #else
 
 #define _wcscmp wcscmp
+#define _wcsncmp wcsncmp
 #define _wcslen wcslen
 #define _wcsnlen wcsnlen
+#define _wcsstr wcsstr
 #define _wcschr wcschr
 #define _wcsrchr wcsrchr
 
-#endif
+#endif /* _WIN32 */
 
 #if !defined(_WIN32) || defined(_UWP)
 

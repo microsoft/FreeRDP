@@ -401,13 +401,9 @@ rdpSettings* freerdp_settings_new(DWORD flags)
 	if (!settings->ClientProductId)
 		goto out_fail;
 
-	settings->ClientHostname = calloc(1, 32);
-
-	if (!settings->ClientHostname)
+	if (!freerdp_settings_set_string(settings, FreeRDP_ClientHostname, settings->ComputerName))
 		goto out_fail;
 
-	gethostname(settings->ClientHostname, 31);
-	settings->ClientHostname[31] = 0;
 	settings->ColorPointerFlag = TRUE;
 	settings->LargePointerFlag = (LARGE_POINTER_FLAG_96x96 | LARGE_POINTER_FLAG_384x384);
 	settings->PointerCacheSize = 20;
@@ -492,6 +488,7 @@ rdpSettings* freerdp_settings_new(DWORD flags)
 	settings->GatewayRpcTransport = TRUE;
 	settings->GatewayHttpTransport = TRUE;
 	settings->GatewayUdpTransport = TRUE;
+	settings->GatewayHttpUseWebsockets = TRUE;
 	settings->FastPathInput = TRUE;
 	settings->FastPathOutput = TRUE;
 	settings->LongCredentialsSupported = TRUE;
@@ -547,11 +544,13 @@ rdpSettings* freerdp_settings_new(DWORD flags)
 	if (!settings->DynamicChannelArray)
 		goto out_fail;
 
-	settings->TcpKeepAlive = TRUE;
-	settings->TcpKeepAliveRetries = 3;
-	settings->TcpKeepAliveDelay = 5;
-	settings->TcpKeepAliveInterval = 2;
-	settings->TcpAckTimeout = 9000;
+	if (!freerdp_settings_set_bool(settings, FreeRDP_TcpKeepAlive, TRUE) ||
+	    !freerdp_settings_set_uint32(settings, FreeRDP_TcpKeepAliveRetries, 3) ||
+	    !freerdp_settings_set_uint32(settings, FreeRDP_TcpKeepAliveDelay, 5) ||
+	    !freerdp_settings_set_uint32(settings, FreeRDP_TcpKeepAliveInterval, 2) ||
+	    !freerdp_settings_set_uint32(settings, FreeRDP_TcpAckTimeout, 9000) ||
+	    !freerdp_settings_set_uint32(settings, FreeRDP_TcpConnectTimeout, 15000))
+		goto out_fail;
 
 	if (!settings->ServerMode)
 	{
@@ -599,6 +598,9 @@ rdpSettings* freerdp_settings_new(DWORD flags)
 	settings->SmartcardLogon = FALSE;
 	settings->TlsSecLevel = 1;
 	settings->OrderSupport = calloc(1, 32);
+
+	freerdp_settings_set_uint16(settings, FreeRDP_TLSMinVersion, TLS1_VERSION);
+	freerdp_settings_set_uint16(settings, FreeRDP_TLSMaxVersion, 0);
 
 	if (!settings->OrderSupport)
 		goto out_fail;

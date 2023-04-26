@@ -182,7 +182,7 @@ static void rdpsnd_select_supported_audio_formats(rdpsndPlugin* rdpsnd)
 
 	rdpsnd->ClientFormats = audio_formats_new(rdpsnd->NumberOfServerFormats);
 
-	if (!rdpsnd->ClientFormats)
+	if (!rdpsnd->ClientFormats || !rdpsnd->device)
 		return;
 
 	for (index = 0; index < rdpsnd->NumberOfServerFormats; index++)
@@ -213,6 +213,10 @@ static UINT rdpsnd_send_client_audio_formats(rdpsndPlugin* rdpsnd)
 	UINT16 length;
 	UINT32 dwVolume;
 	UINT16 wNumberOfFormats;
+
+	if (!rdpsnd->device || (!rdpsnd->dynamic && (rdpsnd->OpenHandle == 0)))
+		return CHANNEL_RC_INITIALIZATION_ERROR;
+
 	dwVolume = IFCALLRESULT(0, rdpsnd->device->GetVolume, rdpsnd->device);
 	wNumberOfFormats = rdpsnd->NumberOfClientFormats;
 	length = 4 + 20;
@@ -578,12 +582,22 @@ static UINT rdpsnd_treat_wave(rdpsndPlugin* rdpsnd, wStream* s, size_t size)
 	UINT64 end;
 	UINT64 diffMS, ts;
 	UINT latency = 0;
+	UINT error;
 
 	if (Stream_GetRemainingLength(s) < size)
 		return ERROR_BAD_LENGTH;
 
 	if (rdpsnd->wCurrentFormatNo >= rdpsnd->NumberOfClientFormats)
 		return ERROR_INTERNAL_ERROR;
+
+	/*
+	 * Send the first WaveConfirm PDU. The server side uses this to determine the
+	 * network latency.
+	 * See also [MS-RDPEA] 2.2.3.8 Wave Confirm PDU
+	 */
+	error = rdpsnd_send_wave_confirm_pdu(rdpsnd, rdpsnd->wTimeStamp, rdpsnd->cBlockNo);
+	if (error)
+		return error;
 
 	data = Stream_Pointer(s);
 	format = &rdpsnd->ClientFormats[rdpsnd->wCurrentFormatNo];
@@ -617,10 +631,11 @@ static UINT rdpsnd_treat_wave(rdpsndPlugin* rdpsnd, wStream* s, size_t size)
 	diffMS = end - rdpsnd->wArrivalTime + latency;
 	ts = (rdpsnd->wTimeStamp + diffMS) % UINT16_MAX;
 
-	/* Don't send wave confirm PDU if on dynamic channel */
-	if (rdpsnd->dynamic)
-		return CHANNEL_RC_OK;
-
+	/*
+	 * Send the second WaveConfirm PDU. With the first WaveConfirm PDU,
+	 * the server side uses this second WaveConfirm PDU to determine the actual
+	 * render latency.
+	 */
 	return rdpsnd_send_wave_confirm_pdu(rdpsnd, (UINT16)ts, rdpsnd->cBlockNo);
 }
 
@@ -695,7 +710,7 @@ static void rdpsnd_recv_close_pdu(rdpsndPlugin* rdpsnd)
  */
 static UINT rdpsnd_recv_volume_pdu(rdpsndPlugin* rdpsnd, wStream* s)
 {
-	BOOL rc;
+	BOOL rc = FALSE;
 	UINT32 dwVolume;
 
 	if (Stream_GetRemainingLength(s) < 4)
@@ -704,7 +719,8 @@ static UINT rdpsnd_recv_volume_pdu(rdpsndPlugin* rdpsnd, wStream* s)
 	Stream_Read_UINT32(s, dwVolume);
 	WLog_Print(rdpsnd->log, WLOG_DEBUG, "%s Volume: 0x%08" PRIX32 "",
 	           rdpsnd_is_dyn_str(rdpsnd->dynamic), dwVolume);
-	rc = IFCALLRESULT(FALSE, rdpsnd->device->SetVolume, rdpsnd->device, dwVolume);
+	if (rdpsnd->device)
+		rc = IFCALLRESULT(FALSE, rdpsnd->device->SetVolume, rdpsnd->device, dwVolume);
 
 	if (!rc)
 	{
@@ -1182,36 +1198,49 @@ static UINT rdpsnd_virtual_channel_event_connected(rdpsndPlugin* rdpsnd, LPVOID 
                                                    UINT32 dataLength)
 {
 	UINT32 status;
+	DWORD opened = 0;
 	WINPR_UNUSED(pData);
 	WINPR_UNUSED(dataLength);
 
 	status = rdpsnd->channelEntryPoints.pVirtualChannelOpenEx(
-	    rdpsnd->InitHandle, &rdpsnd->OpenHandle, rdpsnd->channelDef.name,
-	    rdpsnd_virtual_channel_open_event_ex);
+	    rdpsnd->InitHandle, &opened, rdpsnd->channelDef.name, rdpsnd_virtual_channel_open_event_ex);
 
 	if (status != CHANNEL_RC_OK)
 	{
 		WLog_ERR(TAG, "%s pVirtualChannelOpenEx failed with %s [%08" PRIX32 "]",
 		         rdpsnd_is_dyn_str(rdpsnd->dynamic), WTSErrorToString(status), status);
-		return status;
+		goto fail;
 	}
 
-	rdpsnd->dsp_context = freerdp_dsp_context_new(FALSE);
-
-	if (!rdpsnd->dsp_context)
+	if (rdpsnd_process_connect(rdpsnd) != CHANNEL_RC_OK)
 		goto fail;
 
-	rdpsnd->pool = StreamPool_New(TRUE, 4096);
-
-	if (!rdpsnd->pool)
-		goto fail;
-
-	return rdpsnd_process_connect(rdpsnd);
+	rdpsnd->OpenHandle = opened;
+	return CHANNEL_RC_OK;
 fail:
-	freerdp_dsp_context_free(rdpsnd->dsp_context);
-	StreamPool_Free(rdpsnd->pool);
+	if (opened != 0)
+		rdpsnd->channelEntryPoints.pVirtualChannelCloseEx(rdpsnd->InitHandle, opened);
 
 	return CHANNEL_RC_NO_MEMORY;
+}
+
+static void cleanup_internals(rdpsndPlugin* rdpsnd)
+{
+	if (!rdpsnd)
+		return;
+
+	if (rdpsnd->pool)
+		StreamPool_Return(rdpsnd->pool, rdpsnd->data_in);
+
+	audio_formats_free(rdpsnd->ClientFormats, rdpsnd->NumberOfClientFormats);
+	audio_formats_free(rdpsnd->ServerFormats, rdpsnd->NumberOfServerFormats);
+
+	rdpsnd->NumberOfClientFormats = 0;
+	rdpsnd->ClientFormats = NULL;
+	rdpsnd->NumberOfServerFormats = 0;
+	rdpsnd->ServerFormats = NULL;
+
+	rdpsnd->data_in = NULL;
 }
 
 /**
@@ -1223,33 +1252,25 @@ static UINT rdpsnd_virtual_channel_event_disconnected(rdpsndPlugin* rdpsnd)
 {
 	UINT error;
 
-	if (rdpsnd->OpenHandle == 0)
-		return CHANNEL_RC_OK;
-
-	if (rdpsnd->device)
-		IFCALL(rdpsnd->device->Close, rdpsnd->device);
-
-	error =
-	    rdpsnd->channelEntryPoints.pVirtualChannelCloseEx(rdpsnd->InitHandle, rdpsnd->OpenHandle);
-
-	if (CHANNEL_RC_OK != error)
+	if (rdpsnd->OpenHandle != 0)
 	{
-		WLog_ERR(TAG, "%s pVirtualChannelCloseEx failed with %s [%08" PRIX32 "]",
-		         rdpsnd_is_dyn_str(rdpsnd->dynamic), WTSErrorToString(error), error);
-		return error;
+		DWORD opened = rdpsnd->OpenHandle;
+		rdpsnd->OpenHandle = 0;
+
+		if (rdpsnd->device)
+			IFCALL(rdpsnd->device->Close, rdpsnd->device);
+
+		error = rdpsnd->channelEntryPoints.pVirtualChannelCloseEx(rdpsnd->InitHandle, opened);
+
+		if (CHANNEL_RC_OK != error)
+		{
+			WLog_ERR(TAG, "%s pVirtualChannelCloseEx failed with %s [%08" PRIX32 "]",
+			         rdpsnd_is_dyn_str(rdpsnd->dynamic), WTSErrorToString(error), error);
+			return error;
+		}
 	}
 
-	rdpsnd->OpenHandle = 0;
-	freerdp_dsp_context_free(rdpsnd->dsp_context);
-	StreamPool_Return(rdpsnd->pool, rdpsnd->data_in);
-	StreamPool_Free(rdpsnd->pool);
-
-	audio_formats_free(rdpsnd->ClientFormats, rdpsnd->NumberOfClientFormats);
-	rdpsnd->NumberOfClientFormats = 0;
-	rdpsnd->ClientFormats = NULL;
-	audio_formats_free(rdpsnd->ServerFormats, rdpsnd->NumberOfServerFormats);
-	rdpsnd->NumberOfServerFormats = 0;
-	rdpsnd->ServerFormats = NULL;
+	cleanup_internals(rdpsnd);
 
 	if (rdpsnd->device)
 	{
@@ -1264,6 +1285,36 @@ static void _queue_free(void* obj)
 {
 	wStream* s = obj;
 	Stream_Release(s);
+}
+
+static void free_internals(rdpsndPlugin* rdpsnd)
+{
+	if (!rdpsnd)
+		return;
+
+	freerdp_dsp_context_free(rdpsnd->dsp_context);
+	StreamPool_Free(rdpsnd->pool);
+	rdpsnd->pool = NULL;
+	rdpsnd->dsp_context = NULL;
+}
+
+static BOOL allocate_internals(rdpsndPlugin* rdpsnd)
+{
+	if (!rdpsnd->pool)
+	{
+		rdpsnd->pool = StreamPool_New(TRUE, 4096);
+		if (!rdpsnd->pool)
+			return FALSE;
+	}
+
+	if (!rdpsnd->dsp_context)
+	{
+		rdpsnd->dsp_context = freerdp_dsp_context_new(FALSE);
+		if (!rdpsnd->dsp_context)
+			return FALSE;
+	}
+
+	return TRUE;
 }
 
 static DWORD WINAPI play_thread(LPVOID arg)
@@ -1311,17 +1362,22 @@ static UINT rdpsnd_virtual_channel_event_initialized(rdpsndPlugin* rdpsnd)
 	if (!rdpsnd->queue)
 		return CHANNEL_RC_NO_MEMORY;
 
+	if (!allocate_internals(rdpsnd))
+		return CHANNEL_RC_NO_MEMORY;
+
 	rdpsnd->thread = CreateThread(NULL, 0, play_thread, rdpsnd, 0, NULL);
 	if (!rdpsnd->thread)
 		return CHANNEL_RC_INITIALIZATION_ERROR;
+
 	return CHANNEL_RC_OK;
 }
 
-static void rdpsnd_virtual_channel_event_terminated(rdpsndPlugin* rdpsnd)
+void rdpsnd_virtual_channel_event_terminated(rdpsndPlugin* rdpsnd)
 {
 	if (rdpsnd)
 	{
-		MessageQueue_PostQuit(rdpsnd->queue, 0);
+		if (rdpsnd->queue)
+			MessageQueue_PostQuit(rdpsnd->queue, 0);
 		if (rdpsnd->thread)
 		{
 			WaitForSingleObject(rdpsnd->thread, INFINITE);
@@ -1329,6 +1385,7 @@ static void rdpsnd_virtual_channel_event_terminated(rdpsndPlugin* rdpsnd)
 		}
 		MessageQueue_Free(rdpsnd->queue);
 
+		free_internals(rdpsnd);
 		audio_formats_free(rdpsnd->fixed_format, 1);
 		free(rdpsnd->subsystem);
 		free(rdpsnd->device_name);
@@ -1370,6 +1427,7 @@ static VOID VCAPITYPE rdpsnd_virtual_channel_init_event_ex(LPVOID lpUserParam, L
 
 		case CHANNEL_EVENT_TERMINATED:
 			rdpsnd_virtual_channel_event_terminated(plugin);
+			plugin = NULL;
 			break;
 
 		case CHANNEL_EVENT_ATTACHED:
@@ -1401,6 +1459,27 @@ rdpContext* freerdp_rdpsnd_get_context(rdpsndPlugin* plugin)
 	return plugin->rdpcontext;
 }
 
+static rdpsndPlugin* allocatePlugin(void)
+{
+	rdpsndPlugin* rdpsnd = (rdpsndPlugin*)calloc(1, sizeof(rdpsndPlugin));
+	if (!rdpsnd)
+		goto fail;
+
+	rdpsnd->fixed_format = audio_format_new();
+	if (!rdpsnd->fixed_format)
+		goto fail;
+	rdpsnd->log = WLog_Get("com.freerdp.channels.rdpsnd.client");
+	if (!rdpsnd->log)
+		goto fail;
+
+	rdpsnd->attached = TRUE;
+	return rdpsnd;
+
+fail:
+	if (rdpsnd)
+		audio_format_free(rdpsnd->fixed_format);
+	return NULL;
+}
 /* rdpsnd is always built-in */
 BOOL VCAPITYPE rdpsnd_VirtualChannelEntryEx(PCHANNEL_ENTRY_POINTS pEntryPoints, PVOID pInitHandle)
 {
@@ -1411,12 +1490,11 @@ BOOL VCAPITYPE rdpsnd_VirtualChannelEntryEx(PCHANNEL_ENTRY_POINTS pEntryPoints, 
 	if (!pEntryPoints)
 		return FALSE;
 
-	rdpsnd = (rdpsndPlugin*)calloc(1, sizeof(rdpsndPlugin));
+	rdpsnd = allocatePlugin();
 
 	if (!rdpsnd)
 		return FALSE;
 
-	rdpsnd->attached = TRUE;
 	rdpsnd->channelDef.options = CHANNEL_OPTION_INITIALIZED | CHANNEL_OPTION_ENCRYPT_RDP;
 	sprintf_s(rdpsnd->channelDef.name, ARRAYSIZE(rdpsnd->channelDef.name), "rdpsnd");
 	pEntryPointsEx = (CHANNEL_ENTRY_POINTS_FREERDP_EX*)pEntryPoints;
@@ -1427,15 +1505,6 @@ BOOL VCAPITYPE rdpsnd_VirtualChannelEntryEx(PCHANNEL_ENTRY_POINTS pEntryPoints, 
 		rdpsnd->rdpcontext = pEntryPointsEx->context;
 	}
 
-	rdpsnd->fixed_format = audio_format_new();
-
-	if (!rdpsnd->fixed_format)
-	{
-		free(rdpsnd);
-		return FALSE;
-	}
-
-	rdpsnd->log = WLog_Get("com.freerdp.channels.rdpsnd.client");
 	CopyMemory(&(rdpsnd->channelEntryPoints), pEntryPoints,
 	           sizeof(CHANNEL_ENTRY_POINTS_FREERDP_EX));
 	rdpsnd->InitHandle = pInitHandle;
@@ -1447,7 +1516,7 @@ BOOL VCAPITYPE rdpsnd_VirtualChannelEntryEx(PCHANNEL_ENTRY_POINTS pEntryPoints, 
 	{
 		WLog_ERR(TAG, "%s pVirtualChannelInitEx failed with %s [%08" PRIX32 "]",
 		         rdpsnd_is_dyn_str(FALSE), WTSErrorToString(rc), rc);
-		free(rdpsnd);
+		rdpsnd_virtual_channel_event_terminated(rdpsnd);
 		return FALSE;
 	}
 
@@ -1459,19 +1528,10 @@ static UINT rdpsnd_on_open(IWTSVirtualChannelCallback* pChannelCallback)
 	RDPSND_CHANNEL_CALLBACK* callback = (RDPSND_CHANNEL_CALLBACK*)pChannelCallback;
 	rdpsndPlugin* rdpsnd = (rdpsndPlugin*)callback->plugin;
 
-	rdpsnd->dsp_context = freerdp_dsp_context_new(FALSE);
-	if (!rdpsnd->dsp_context)
-		goto fail;
-
-	rdpsnd->pool = StreamPool_New(TRUE, 4096);
-	if (!rdpsnd->pool)
-		goto fail;
+	if (!allocate_internals(rdpsnd))
+		return ERROR_OUTOFMEMORY;
 
 	return rdpsnd_process_connect(rdpsnd);
-fail:
-	freerdp_dsp_context_free(rdpsnd->dsp_context);
-	StreamPool_Free(rdpsnd->pool);
-	return CHANNEL_RC_NO_MEMORY;
 }
 
 static UINT rdpsnd_on_data_received(IWTSVirtualChannelCallback* pChannelCallback, wStream* data)
@@ -1479,7 +1539,9 @@ static UINT rdpsnd_on_data_received(IWTSVirtualChannelCallback* pChannelCallback
 	RDPSND_CHANNEL_CALLBACK* callback = (RDPSND_CHANNEL_CALLBACK*)pChannelCallback;
 	rdpsndPlugin* plugin;
 	wStream* copy;
-	size_t len = Stream_GetRemainingLength(data);
+	size_t len;
+
+	len = Stream_GetRemainingLength(data);
 
 	if (!callback || !callback->plugin)
 		return ERROR_INVALID_PARAMETER;
@@ -1508,22 +1570,16 @@ static UINT rdpsnd_on_close(IWTSVirtualChannelCallback* pChannelCallback)
 
 	if (rdpsnd->device)
 		IFCALL(rdpsnd->device->Close, rdpsnd->device);
-	freerdp_dsp_context_free(rdpsnd->dsp_context);
-	StreamPool_Return(rdpsnd->pool, rdpsnd->data_in);
-	StreamPool_Free(rdpsnd->pool);
 
-	audio_formats_free(rdpsnd->ClientFormats, rdpsnd->NumberOfClientFormats);
-	rdpsnd->NumberOfClientFormats = 0;
-	rdpsnd->ClientFormats = NULL;
-	audio_formats_free(rdpsnd->ServerFormats, rdpsnd->NumberOfServerFormats);
-	rdpsnd->NumberOfServerFormats = 0;
-	rdpsnd->ServerFormats = NULL;
+	cleanup_internals(rdpsnd);
+
 	if (rdpsnd->device)
 	{
 		IFCALL(rdpsnd->device->Free, rdpsnd->device);
 		rdpsnd->device = NULL;
 	}
 
+	free_internals(rdpsnd);
 	free(pChannelCallback);
 	return CHANNEL_RC_OK;
 }
@@ -1622,7 +1678,7 @@ UINT rdpsnd_DVCPluginEntry(IDRDYNVC_ENTRY_POINTS* pEntryPoints)
 
 	if (!rdpsnd)
 	{
-		rdpsnd = (rdpsndPlugin*)calloc(1, sizeof(rdpsndPlugin));
+		rdpsnd = allocatePlugin();
 		if (!rdpsnd)
 		{
 			WLog_ERR(TAG, "%s calloc failed!", rdpsnd_is_dyn_str(TRUE));
@@ -1633,14 +1689,10 @@ UINT rdpsnd_DVCPluginEntry(IDRDYNVC_ENTRY_POINTS* pEntryPoints)
 		rdpsnd->iface.Connected = NULL;
 		rdpsnd->iface.Disconnected = NULL;
 		rdpsnd->iface.Terminated = rdpsnd_plugin_terminated;
-		rdpsnd->attached = TRUE;
 		rdpsnd->dynamic = TRUE;
-		rdpsnd->fixed_format = audio_format_new();
-		if (!rdpsnd->fixed_format)
-			goto fail;
 
-		rdpsnd->log = WLog_Get("com.freerdp.channels.rdpsnd.client");
-		rdpsnd->channelEntryPoints.pExtendedData = pEntryPoints->GetPluginData(pEntryPoints);
+		/* user data pointer is not const, cast to avoid warning. */
+		rdpsnd->channelEntryPoints.pExtendedData = (void*)pEntryPoints->GetPluginData(pEntryPoints);
 
 		error = pEntryPoints->RegisterPlugin(pEntryPoints, "rdpsnd", &rdpsnd->iface);
 	}
@@ -1650,8 +1702,5 @@ UINT rdpsnd_DVCPluginEntry(IDRDYNVC_ENTRY_POINTS* pEntryPoints)
 		return CHANNEL_RC_BAD_CHANNEL;
 	}
 
-	return error;
-fail:
-	rdpsnd_plugin_terminated(&rdpsnd->iface);
 	return error;
 }

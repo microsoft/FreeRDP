@@ -99,6 +99,8 @@ UINT rdpei_server_init(RdpeiServerContext* context)
 	void* buffer = NULL;
 	DWORD bytesReturned;
 	RdpeiServerPrivate* priv = context->priv;
+	UINT32 channelId;
+	BOOL status = TRUE;
 
 	priv->channelHandle = WTSVirtualChannelOpenEx(WTS_CURRENT_SESSION, RDPEI_DVC_CHANNEL_NAME,
 	                                              WTS_CHANNEL_OPTION_DYNAMIC);
@@ -106,6 +108,15 @@ UINT rdpei_server_init(RdpeiServerContext* context)
 	{
 		WLog_ERR(TAG, "WTSVirtualChannelOpenEx failed!");
 		return CHANNEL_RC_INITIALIZATION_ERROR;
+	}
+
+	channelId = WTSChannelGetIdByHandle(priv->channelHandle);
+
+	IFCALLRET(context->onChannelIdAssigned, status, context, channelId);
+	if (!status)
+	{
+		WLog_ERR(TAG, "context->onChannelIdAssigned failed!");
+		goto out_close;
 	}
 
 	if (!WTSVirtualChannelQuery(priv->channelHandle, WTSVirtualEventHandle, &buffer,
@@ -612,6 +623,7 @@ UINT rdpei_server_send_sc_ready_ex(RdpeiServerContext* context, UINT32 version, 
 {
 	ULONG written;
 	RdpeiServerPrivate* priv = context->priv;
+	UINT32 pduLen = 4;
 
 	if (priv->automataState != STATE_INITIAL)
 	{
@@ -621,14 +633,17 @@ UINT rdpei_server_send_sc_ready_ex(RdpeiServerContext* context, UINT32 version, 
 
 	Stream_SetPosition(priv->outputStream, 0);
 
-	if (!Stream_EnsureCapacity(priv->outputStream, RDPINPUT_HEADER_LENGTH + 4))
+	if (version >= RDPINPUT_PROTOCOL_V300)
+		pduLen += 4;
+
+	if (!Stream_EnsureCapacity(priv->outputStream, RDPINPUT_HEADER_LENGTH + pduLen))
 	{
 		WLog_ERR(TAG, "Stream_EnsureCapacity failed!");
 		return CHANNEL_RC_NO_MEMORY;
 	}
 
 	Stream_Write_UINT16(priv->outputStream, EVENTID_SC_READY);
-	Stream_Write_UINT32(priv->outputStream, RDPINPUT_HEADER_LENGTH + 4);
+	Stream_Write_UINT32(priv->outputStream, RDPINPUT_HEADER_LENGTH + pduLen);
 	Stream_Write_UINT32(priv->outputStream, version);
 	if (version >= RDPINPUT_PROTOCOL_V300)
 		Stream_Write_UINT32(priv->outputStream, features);
