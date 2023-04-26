@@ -53,7 +53,10 @@
 #include <freerdp/server/telemetry.h>
 #include <freerdp/server/rdpgfx.h>
 #include <freerdp/server/disp.h>
+
+#ifdef WITH_CHANNEL_GFXREDIR
 #include <freerdp/server/gfxredir.h>
+#endif
 
 #if defined(CHANNEL_RDPECAM_SERVER)
 #include <freerdp/server/rdpecam-enumerator.h>

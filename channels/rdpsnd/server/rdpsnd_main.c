@@ -851,6 +851,7 @@ static UINT rdpsnd_server_start(RdpsndServerContext* context)
 	WINPR_ASSERT(context->priv);
 
 	priv = context->priv;
+
 	priv->SessionId = WTS_CURRENT_SESSION;
 
 	if (context->use_dynamic_virtual_channel)
@@ -863,6 +864,7 @@ static UINT rdpsnd_server_start(RdpsndServerContext* context)
 		{
 			priv->SessionId = (DWORD)*pSessionId;
 			WTSFreeMemory(pSessionId);
+
 			priv->ChannelHandle = (HANDLE)WTSVirtualChannelOpenEx(
 			    priv->SessionId, "AUDIO_PLAYBACK_DVC", WTS_CHANNEL_OPTION_DYNAMIC);
 			if (!priv->ChannelHandle)
