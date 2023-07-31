@@ -1952,7 +1952,7 @@ static UINT rdpdr_server_drive_query_directory_callback1(RdpdrServerContext* con
 	irp->Callback = rdpdr_server_drive_query_directory_callback2;
 	irp->DeviceId = deviceId;
 	irp->FileId = fileId;
-	winpr_str_append("\\*.*", irp->PathName, ARRAYSIZE(irp->PathName), NULL);
+	strcat(irp->PathName, "\\*.*");
 
 	if (!rdpdr_server_enqueue_irp(context, irp))
 	{

@@ -30,7 +30,7 @@ endif(NOT WITH_ICU)
 
 if (WITH_ICU)
 	find_package(ICU REQUIRED i18n uc io)
-	winpr_include_directory_add(${ICU_INCLUDE_DIRS})
+	include_directories(${ICU_INCLUDE_DIRS})
 	winpr_library_add_private(${ICU_LIBRARIES})
 endif (WITH_ICU)
 

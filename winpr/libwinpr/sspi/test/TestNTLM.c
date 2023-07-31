@@ -467,14 +467,17 @@ void test_ntlm_server_free(TEST_NTLM_SERVER* ntlm)
 	free(ntlm);
 }
 
-static BOOL test_default(void)
+int TestNTLM(int argc, char* argv[])
 {
 	int status;
-	BOOL rc = FALSE;
+	int rc = -1;
 	PSecBuffer pSecBuffer;
 	TEST_NTLM_CLIENT* client = NULL;
 	TEST_NTLM_SERVER* server = NULL;
 	BOOL DynamicTest = TRUE;
+
+	WINPR_UNUSED(argc);
+	WINPR_UNUSED(argv);
 
 	/**
 	 * Client Initialization
@@ -681,7 +684,7 @@ static BOOL test_default(void)
 		goto fail;
 	}
 
-	rc = TRUE;
+	rc = 0;
 
 fail:
 	/**
@@ -690,14 +693,4 @@ fail:
 	test_ntlm_client_free(client);
 	test_ntlm_server_free(server);
 	return rc;
-}
-
-int TestNTLM(int argc, char* argv[])
-{
-	WINPR_UNUSED(argc);
-	WINPR_UNUSED(argv);
-
-	if (!test_default())
-		return -1;
-	return 0;
 }

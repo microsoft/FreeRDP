@@ -27,7 +27,6 @@
 #endif
 
 #include <assert.h>
-#include <winpr/sspicli.h>
 #include <float.h>
 
 #include <X11/Xlib.h>
@@ -815,6 +814,8 @@ void xf_lock_x11_(xfContext* xfc, const char* fkt)
 	else
 		XLockDisplay(xfc->display);
 
+	if (xfc->locked)
+		WLog_WARN(TAG, "%s:\t[%" PRIu32 "] recursive lock from %s", __FUNCTION__, xfc->locked, fkt);
 	xfc->locked++;
 	WLog_VRB(TAG, "%s:\t[%" PRIu32 "] from %s", __FUNCTION__, xfc->locked, fkt);
 }
@@ -1182,12 +1183,20 @@ static BOOL xf_pre_connect(freerdp* instance)
 
 	if (!settings->Username && !settings->CredentialsFromStdin && !settings->SmartcardLogon)
 	{
+		int rc;
 		char login_name[MAX_PATH] = { 0 };
-		ULONG size = sizeof(login_name) - 1;
 
-		if (GetUserNameExA(NameSamCompatible, login_name, &size))
+#ifdef HAVE_GETLOGIN_R
+		rc = getlogin_r(login_name, sizeof(login_name));
+#else
+		strncpy(login_name, getlogin(), sizeof(login_name));
+		rc = 0;
+#endif
+		if (rc == 0)
 		{
-			if (!freerdp_settings_set_string(settings, FreeRDP_Username, login_name))
+			settings->Username = _strdup(login_name);
+
+			if (!settings->Username)
 				return FALSE;
 
 			WLog_INFO(TAG, "No user name set. - Using login name: %s", settings->Username);
@@ -1254,7 +1263,6 @@ static BOOL xf_post_connect(freerdp* instance)
 	context = instance->context;
 	settings = instance->settings;
 	update = context->update;
-	BOOL serverIsWindowsPlatform;
 
 	if (!gdi_init(instance, xf_get_local_color_format(xfc, TRUE)))
 		return FALSE;
@@ -1324,8 +1332,7 @@ static BOOL xf_post_connect(freerdp* instance)
 	update->SetKeyboardIndicators = xf_keyboard_set_indicators;
 	update->SetKeyboardImeStatus = xf_keyboard_set_ime_status;
 
-	serverIsWindowsPlatform = (settings->OsMajorType == OSMAJORTYPE_WINDOWS);
-	if (!(xfc->clipboard = xf_clipboard_new(xfc, !serverIsWindowsPlatform)))
+	if (!(xfc->clipboard = xf_clipboard_new(xfc)))
 		return FALSE;
 
 	if (!(xfc->xfDisp = xf_disp_new(xfc)))
@@ -1384,10 +1391,7 @@ static int xf_logon_error_info(freerdp* instance, UINT32 data, UINT32 type)
 	const char* str_data = freerdp_get_logon_error_info_data(data);
 	const char* str_type = freerdp_get_logon_error_info_type(type);
 	WLog_INFO(TAG, "Logon Error Info %s [%s]", str_data, str_type);
-	if(type != LOGON_MSG_SESSION_CONTINUE)
-	{
-	    xf_rail_disable_remoteapp_mode(xfc);
-	}
+	xf_rail_disable_remoteapp_mode(xfc);
 	return 1;
 }
 
@@ -1464,7 +1468,7 @@ static BOOL handle_window_events(freerdp* instance)
 	{
 		if (!xf_process_x_events(instance))
 		{
-			WLog_DBG(TAG, "Closed from X11");
+			WLog_INFO(TAG, "Closed from X11");
 			return FALSE;
 		}
 	}
@@ -1508,84 +1512,6 @@ static DWORD WINAPI xf_client_thread(LPVOID param)
 		else if (freerdp_get_last_error(instance->context) ==
 		         FREERDP_ERROR_SECURITY_NEGO_CONNECT_FAILED)
 			exit_code = XF_EXIT_NEGO_FAILURE;
- 		else if (freerdp_get_last_error(instance->context) ==
- 				 FREERDP_ERROR_CONNECT_LOGON_FAILURE)
- 			exit_code = XF_EXIT_LOGON_FAILURE;
- 		else if (freerdp_get_last_error(instance->context) ==
- 				 FREERDP_ERROR_CONNECT_ACCOUNT_LOCKED_OUT)
- 			exit_code = XF_EXIT_ACCOUNT_LOCKED_OUT;
- 		else if (freerdp_get_last_error(instance->context) ==
- 				 FREERDP_ERROR_PRE_CONNECT_FAILED)
- 			exit_code = XF_EXIT_PRE_CONNECT_FAILED;
- 		else if (freerdp_get_last_error(instance->context) ==
- 				 FREERDP_ERROR_CONNECT_UNDEFINED)
- 			exit_code = XF_EXIT_CONNECT_UNDEFINED;
- 		else if (freerdp_get_last_error(instance->context) ==
- 				 FREERDP_ERROR_POST_CONNECT_FAILED)
- 			exit_code = XF_EXIT_POST_CONNECT_FAILED;
- 		else if (freerdp_get_last_error(instance->context) ==
- 				 FREERDP_ERROR_DNS_ERROR)
- 			exit_code = XF_EXIT_DNS_ERROR;
- 		else if (freerdp_get_last_error(instance->context) ==
- 				 FREERDP_ERROR_DNS_NAME_NOT_FOUND)
- 			exit_code = XF_EXIT_DNS_NAME_NOT_FOUND;
- 		else if (freerdp_get_last_error(instance->context) ==
- 				 FREERDP_ERROR_CONNECT_FAILED)
- 			exit_code = XF_EXIT_CONNECT_FAILED;
- 		else if (freerdp_get_last_error(instance->context) ==
- 				 FREERDP_ERROR_MCS_CONNECT_INITIAL_ERROR)
- 			exit_code = XF_EXIT_MCS_CONNECT_INITIAL_ERROR;
- 		else if (freerdp_get_last_error(instance->context) ==
- 				 FREERDP_ERROR_TLS_CONNECT_FAILED)
- 			exit_code = XF_EXIT_TLS_CONNECT_FAILED;
- 		else if (freerdp_get_last_error(instance->context) ==
- 				 FREERDP_ERROR_INSUFFICIENT_PRIVILEGES)
- 			exit_code = XF_EXIT_INSUFFICIENT_PRIVILEGES;
- 		else if (freerdp_get_last_error(instance->context) ==
- 				 FREERDP_ERROR_CONNECT_CANCELLED)
- 			exit_code = XF_EXIT_CONNECT_CANCELLED;
- 		else if (freerdp_get_last_error(instance->context) ==
- 				 FREERDP_ERROR_SECURITY_NEGO_CONNECT_FAILED)
- 			exit_code = XF_EXIT_SECURITY_NEGO_CONNECT_FAILED;
- 		else if (freerdp_get_last_error(instance->context) ==
- 				 FREERDP_ERROR_CONNECT_TRANSPORT_FAILED)
- 			exit_code = XF_EXIT_CONNECT_TRANSPORT_FAILED;
- 		else if (freerdp_get_last_error(instance->context) ==
- 				 FREERDP_ERROR_CONNECT_PASSWORD_EXPIRED)
- 			exit_code = XF_EXIT_CONNECT_PASSWORD_EXPIRED;
- 		else if (freerdp_get_last_error(instance->context) ==
- 				 FREERDP_ERROR_CONNECT_PASSWORD_MUST_CHANGE)
- 			exit_code = XF_EXIT_CONNECT_PASSWORD_MUST_CHANGE;
- 		else if (freerdp_get_last_error(instance->context) ==
- 				 FREERDP_ERROR_CONNECT_KDC_UNREACHABLE)
- 			exit_code = XF_EXIT_CONNECT_KDC_UNREACHABLE;
- 		else if (freerdp_get_last_error(instance->context) ==
- 				 FREERDP_ERROR_CONNECT_ACCOUNT_DISABLED)
- 			exit_code = XF_EXIT_CONNECT_ACCOUNT_DISABLED;
- 		else if (freerdp_get_last_error(instance->context) ==
- 				 FREERDP_ERROR_CONNECT_PASSWORD_CERTAINLY_EXPIRED)
- 			exit_code = XF_EXIT_CONNECT_PASSWORD_CERTAINLY_EXPIRED;
- 		else if (freerdp_get_last_error(instance->context) ==
- 				 FREERDP_ERROR_CONNECT_CLIENT_REVOKED)
- 			exit_code = XF_EXIT_CONNECT_CLIENT_REVOKED;
- 		else if (freerdp_get_last_error(instance->context) ==
- 				 FREERDP_ERROR_CONNECT_WRONG_PASSWORD)
- 			exit_code = XF_EXIT_CONNECT_WRONG_PASSWORD;
- 		else if (freerdp_get_last_error(instance->context) ==
- 				 FREERDP_ERROR_CONNECT_ACCESS_DENIED)
- 			exit_code = XF_EXIT_CONNECT_ACCESS_DENIED;
- 		else if (freerdp_get_last_error(instance->context) ==
- 				 FREERDP_ERROR_CONNECT_ACCOUNT_RESTRICTION)
- 			exit_code = XF_EXIT_CONNECT_ACCOUNT_RESTRICTION;
- 		else if (freerdp_get_last_error(instance->context) ==
- 				 FREERDP_ERROR_CONNECT_ACCOUNT_EXPIRED)
- 			exit_code = XF_EXIT_CONNECT_ACCOUNT_EXPIRED;
- 		else if (freerdp_get_last_error(instance->context) ==
- 				 FREERDP_ERROR_CONNECT_LOGON_TYPE_NOT_GRANTED)
- 			exit_code = XF_EXIT_CONNECT_LOGON_TYPE_NOT_GRANTED;
- 		else if (freerdp_get_last_error(instance->context) ==
- 				 FREERDP_ERROR_CONNECT_NO_OR_MISSING_CREDENTIALS)
- 			exit_code = XF_EXIT_CONNECT_NO_OR_MISSING_CREDENTIALS;
 		else
 			exit_code = XF_EXIT_CONN_FAILED;
 	}
@@ -1750,7 +1676,7 @@ end:
 
 DWORD xf_exit_code_from_disconnect_reason(DWORD reason)
 {
-	if (reason == 0 || (reason >= XF_EXIT_PARSE_ARGUMENTS && reason <= XF_EXIT_CONNECT_NO_OR_MISSING_CREDENTIALS))
+	if (reason == 0 || (reason >= XF_EXIT_PARSE_ARGUMENTS && reason <= XF_EXIT_NEGO_FAILURE))
 		return reason;
 	/* License error set */
 	else if (reason >= 0x100 && reason <= 0x10A)

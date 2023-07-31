@@ -59,11 +59,9 @@ static WINPR_SAM_ENTRY* SamEntryFromDataA(LPCSTR User, DWORD UserLength, LPCSTR 
 	WINPR_SAM_ENTRY* entry = calloc(1, sizeof(WINPR_SAM_ENTRY));
 	if (!entry)
 		return NULL;
-	if (User && (UserLength > 0))
-		entry->User = _strdup(User);
+	entry->User = _strdup(User);
 	entry->UserLength = UserLength;
-	if (Domain && (DomainLength > 0))
-		entry->Domain = _strdup(Domain);
+	entry->Domain = _strdup(Domain);
 	entry->DomainLength = DomainLength;
 	return entry;
 }
@@ -175,29 +173,23 @@ static void SamLookupFinish(WINPR_SAM* sam)
 static void HexStrToBin(const char* str, BYTE* bin, size_t length)
 {
 	size_t i;
+	CharUpperBuffA(str, length * 2);
 
 	for (i = 0; i < length; i++)
 	{
-		char cur = str[2 * i];
-		char curNext = str[2 * i + 1];
-		BYTE* curBin = &bin[i];
+		bin[i] = 0;
 
-		CharUpperBuffA(&cur, 1);
-		CharUpperBuffA(&curNext, 1);
+		if ((str[i * 2] >= '0') && (str[i * 2] <= '9'))
+			bin[i] |= (str[i * 2] - '0') << 4;
 
-		*curBin = 0;
+		if ((str[i * 2] >= 'A') && (str[i * 2] <= 'F'))
+			bin[i] |= (str[i * 2] - 'A' + 10) << 4;
 
-		if ((cur >= '0') && (cur <= '9'))
-			*curBin |= (cur - '0') << 4;
+		if ((str[i * 2 + 1] >= '0') && (str[i * 2 + 1] <= '9'))
+			bin[i] |= (str[i * 2 + 1] - '0');
 
-		if ((cur >= 'A') && (cur <= 'F'))
-			*curBin |= (cur - 'A' + 10) << 4;
-
-		if ((curNext >= '0') && (curNext <= '9'))
-			*curBin |= (curNext - '0');
-
-		if ((curNext >= 'A') && (curNext <= 'F'))
-			*curBin |= (curNext - 'A' + 10);
+		if ((str[i * 2 + 1] >= 'A') && (str[i * 2 + 1] <= 'F'))
+			bin[i] |= (str[i * 2 + 1] - 'A' + 10);
 	}
 }
 

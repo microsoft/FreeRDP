@@ -30,7 +30,7 @@ struct _reg
 	FILE* fp;
 	char* line;
 	char* next_line;
-	size_t line_length;
+	int line_length;
 	char* buffer;
 	char* filename;
 	BOOL read_only;
@@ -44,8 +44,7 @@ struct _reg_val
 	RegVal* prev;
 	RegVal* next;
 
-	union reg_data
-	{
+	union reg_data {
 		DWORD dword;
 		char* string;
 	} data;

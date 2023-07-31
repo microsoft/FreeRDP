@@ -195,12 +195,6 @@ static size_t udevman_register_udevice(IUDEVMAN* idevman, BYTE bus_number, BYTE 
 		/* register all device that match pid vid */
 		num = udev_new_by_id(urbdrc, udevman->context, idVendor, idProduct, &devArray);
 
-		if (num == 0)
-		{
-			WLog_Print(urbdrc->log, WLOG_WARN,
-			           "Could not find or redirect any usb devices by id %04x:%04x", idVendor, idProduct);
-		}
-
 		for (i = 0; i < num; i++)
 		{
 			UINT32 id;
@@ -511,7 +505,12 @@ static BOOL filter_by_class(uint8_t bDeviceClass, uint8_t bDeviceSubClass)
 
 static BOOL append(char* dst, size_t length, const char* src)
 {
-	return winpr_str_append(src, dst, length, NULL);
+	size_t slen = strlen(src);
+	size_t dlen = strnlen(dst, length);
+	if (dlen + slen >= length)
+		return FALSE;
+	strcat(dst, src);
+	return TRUE;
 }
 
 static BOOL device_is_filtered(struct libusb_device* dev,
@@ -581,8 +580,8 @@ static BOOL device_is_filtered(struct libusb_device* dev,
 	return filtered;
 }
 
-static int LIBUSB_CALL hotplug_callback(struct libusb_context* ctx, struct libusb_device* dev,
-                                        libusb_hotplug_event event, void* user_data)
+static int hotplug_callback(struct libusb_context* ctx, struct libusb_device* dev,
+                            libusb_hotplug_event event, void* user_data)
 {
 	VID_PID_PAIR pair;
 	struct libusb_device_descriptor desc;
@@ -835,7 +834,7 @@ static BOOL poll_libusb_events(UDEVMAN* udevman)
 {
 	int rc = LIBUSB_SUCCESS;
 	struct timeval tv = { 0, 500 };
-	if (libusb_try_lock_events(udevman->context) == 0)
+	if (libusb_try_lock_events(udevman->context))
 	{
 		if (libusb_event_handling_ok(udevman->context))
 		{
@@ -860,7 +859,7 @@ static BOOL poll_libusb_events(UDEVMAN* udevman)
 	return rc > 0;
 }
 
-static DWORD WINAPI poll_thread(LPVOID lpThreadParameter)
+static DWORD poll_thread(LPVOID lpThreadParameter)
 {
 	libusb_hotplug_callback_handle handle;
 	UDEVMAN* udevman = (UDEVMAN*)lpThreadParameter;
@@ -922,7 +921,7 @@ UINT freerdp_urbdrc_client_subsystem_entry(PFREERDP_URBDRC_SERVICE_ENTRY_POINTS 
 	udevman->next_device_id = BASE_USBDEVICE_NUM;
 	udevman->iface.plugin = pEntryPoints->plugin;
 	rc = libusb_init(&udevman->context);
-	
+
 	if (rc != LIBUSB_SUCCESS)
 		goto fail;
 

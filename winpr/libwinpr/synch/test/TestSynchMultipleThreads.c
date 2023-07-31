@@ -1,14 +1,15 @@
+
 #include <stdlib.h>
 
 #include <winpr/crt.h>
 #include <winpr/synch.h>
 #include <winpr/thread.h>
 
-#define THREADS 8
+#define THREADS 24
 
 static DWORD WINAPI test_thread(LPVOID arg)
 {
-	long timeout = 30 + (rand() % 100);
+	long timeout = 100 + (rand() % 1000);
 	WINPR_UNUSED(arg);
 	Sleep(timeout);
 	ExitThread(0);
@@ -21,7 +22,7 @@ static int start_threads(DWORD count, HANDLE* threads)
 
 	for (i = 0; i < count; i++)
 	{
-		threads[i] = CreateThread(NULL, 0, test_thread, NULL, CREATE_SUSPENDED, NULL);
+		threads[i] = CreateThread(NULL, 0, test_thread, NULL, 0, NULL);
 
 		if (!threads[i])
 		{
@@ -30,45 +31,38 @@ static int start_threads(DWORD count, HANDLE* threads)
 		}
 	}
 
-	for (i = 0; i < count; i++)
-		ResumeThread(threads[i]);
 	return 0;
 }
 
 static int close_threads(DWORD count, HANDLE* threads)
 {
-	int rc = 0;
 	DWORD i;
 
 	for (i = 0; i < count; i++)
 	{
-		if (!threads[i])
-			continue;
-
 		if (!CloseHandle(threads[i]))
 		{
 			fprintf(stderr, "%s: CloseHandle [%" PRIu32 "] failure\n", __FUNCTION__, i);
-			rc = -1;
+			return -1;
 		}
-		threads[i] = NULL;
 	}
 
-	return rc;
+	return 0;
 }
 
 static BOOL TestWaitForAll(void)
 {
 	BOOL rc = FALSE;
 	DWORD ret;
-	HANDLE threads[THREADS] = { 0 };
+	HANDLE threads[THREADS];
 	/* WaitForAll, timeout */
 	if (start_threads(THREADS, threads))
 	{
 		fprintf(stderr, "%s: start_threads failed\n", __FUNCTION__);
-		goto fail;
+		return FALSE;
 	}
 
-	ret = WaitForMultipleObjects(THREADS, threads, TRUE, 10);
+	ret = WaitForMultipleObjects(THREADS, threads, TRUE, 50);
 	if (ret != WAIT_TIMEOUT)
 	{
 		fprintf(stderr, "%s: WaitForMultipleObjects bWaitAll, timeout 50 failed, ret=%d\n",
@@ -82,14 +76,14 @@ static BOOL TestWaitForAll(void)
 		goto fail;
 	}
 
-	rc = TRUE;
-fail:
 	if (close_threads(THREADS, threads))
 	{
 		fprintf(stderr, "%s: close_threads failed\n", __FUNCTION__);
 		return FALSE;
 	}
 
+	rc = TRUE;
+fail:
 	return rc;
 }
 
@@ -97,12 +91,12 @@ static BOOL TestWaitOne(void)
 {
 	BOOL rc = FALSE;
 	DWORD ret;
-	HANDLE threads[THREADS] = { 0 };
+	HANDLE threads[THREADS];
 	/* WaitForAll, timeout */
 	if (start_threads(THREADS, threads))
 	{
 		fprintf(stderr, "%s: start_threads failed\n", __FUNCTION__);
-		goto fail;
+		return FALSE;
 	}
 
 	ret = WaitForMultipleObjects(THREADS, threads, FALSE, INFINITE);
@@ -118,14 +112,14 @@ static BOOL TestWaitOne(void)
 		goto fail;
 	}
 
-	rc = TRUE;
-fail:
 	if (close_threads(THREADS, threads))
 	{
 		fprintf(stderr, "%s: close_threads failed\n", __FUNCTION__);
 		return FALSE;
 	}
 
+	rc = TRUE;
+fail:
 	return rc;
 }
 
@@ -133,15 +127,15 @@ static BOOL TestWaitOneTimeout(void)
 {
 	BOOL rc = FALSE;
 	DWORD ret;
-	HANDLE threads[THREADS] = { 0 };
+	HANDLE threads[THREADS];
 	/* WaitForAll, timeout */
 	if (start_threads(THREADS, threads))
 	{
 		fprintf(stderr, "%s: start_threads failed\n", __FUNCTION__);
-		goto fail;
+		return FALSE;
 	}
 
-	ret = WaitForMultipleObjects(THREADS, threads, FALSE, 1);
+	ret = WaitForMultipleObjects(THREADS, threads, FALSE, 50);
 	if (ret != WAIT_TIMEOUT)
 	{
 		fprintf(stderr, "%s: WaitForMultipleObjects timeout 50 failed, ret=%d\n", __FUNCTION__,
@@ -154,14 +148,15 @@ static BOOL TestWaitOneTimeout(void)
 		fprintf(stderr, "%s: WaitForMultipleObjects bWaitAll, INFINITE failed\n", __FUNCTION__);
 		goto fail;
 	}
-	rc = TRUE;
-fail:
+
 	if (close_threads(THREADS, threads))
 	{
 		fprintf(stderr, "%s: close_threads failed\n", __FUNCTION__);
 		return FALSE;
 	}
 
+	rc = TRUE;
+fail:
 	return rc;
 }
 
@@ -169,12 +164,12 @@ static BOOL TestWaitOneTimeoutMultijoin(void)
 {
 	BOOL rc = FALSE;
 	DWORD ret, i;
-	HANDLE threads[THREADS] = { 0 };
+	HANDLE threads[THREADS];
 	/* WaitForAll, timeout */
 	if (start_threads(THREADS, threads))
 	{
 		fprintf(stderr, "%s: start_threads failed\n", __FUNCTION__);
-		goto fail;
+		return FALSE;
 	}
 
 	for (i = 0; i < THREADS; i++)
@@ -182,7 +177,7 @@ static BOOL TestWaitOneTimeoutMultijoin(void)
 		ret = WaitForMultipleObjects(THREADS, threads, FALSE, 0);
 		if (ret != WAIT_TIMEOUT)
 		{
-			fprintf(stderr, "%s: WaitForMultipleObjects timeout 0 failed, ret=%d\n", __FUNCTION__,
+			fprintf(stderr, "%s: WaitForMultipleObjects timeout 50 failed, ret=%d\n", __FUNCTION__,
 			        ret);
 			goto fail;
 		}
@@ -194,37 +189,34 @@ static BOOL TestWaitOneTimeoutMultijoin(void)
 		goto fail;
 	}
 
-	rc = TRUE;
-fail:
 	if (close_threads(THREADS, threads))
 	{
 		fprintf(stderr, "%s: close_threads failed\n", __FUNCTION__);
 		return FALSE;
 	}
 
+	rc = TRUE;
+fail:
 	return rc;
 }
 
 static BOOL TestDetach(void)
 {
-	BOOL rc = FALSE;
-	HANDLE threads[THREADS] = { 0 };
+	HANDLE threads[THREADS];
 	/* WaitForAll, timeout */
 	if (start_threads(THREADS, threads))
 	{
 		fprintf(stderr, "%s: start_threads failed\n", __FUNCTION__);
-		goto fail;
+		return FALSE;
 	}
 
-	rc = TRUE;
-fail:
 	if (close_threads(THREADS, threads))
 	{
 		fprintf(stderr, "%s: close_threads failed\n", __FUNCTION__);
 		return FALSE;
 	}
 
-	return rc;
+	return TRUE;
 }
 
 int TestSynchMultipleThreads(int argc, char* argv[])

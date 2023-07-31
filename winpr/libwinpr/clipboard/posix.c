@@ -182,12 +182,9 @@ error:
  * Note that the function converts a single file name component,
  * it does not take care of component separators.
  */
-static WCHAR* convert_local_name_component_to_remote(wClipboard* clipboard, const char* local_name)
+static WCHAR* convert_local_name_component_to_remote(const char* local_name)
 {
-	wClipboardDelegate* delegate = ClipboardGetDelegate(clipboard);
 	WCHAR* remote_name = NULL;
-
-	WINPR_ASSERT(delegate);
 
 	/*
 	 * Note that local file names are not actually guaranteed to be
@@ -206,12 +203,8 @@ static WCHAR* convert_local_name_component_to_remote(wClipboard* clipboard, cons
 	 * Some file names are not valid on Windows. Check for these now
 	 * so that we won't get ourselves into a trouble later as such names
 	 * are known to crash some Windows shells when pasted via clipboard.
-	 *
-	 * The IsFileNameComponentValid callback can be overridden by the API
-	 * user, if it is known, that the connected peer is not on the
-	 * Windows platform.
 	 */
-	if (!delegate->IsFileNameComponentValid(remote_name))
+	if (!ValidFileNameComponent(remote_name))
 	{
 		WLog_ERR(TAG, "invalid file name component: %s", local_name);
 		goto error;
@@ -259,12 +252,10 @@ static WCHAR* concat_remote_name(const WCHAR* dir, const WCHAR* file)
 	return buffer;
 }
 
-static BOOL add_file_to_list(wClipboard* clipboard, const char* local_name,
-                             const WCHAR* remote_name, wArrayList* files);
+static BOOL add_file_to_list(const char* local_name, const WCHAR* remote_name, wArrayList* files);
 
-static BOOL add_directory_entry_to_list(wClipboard* clipboard, const char* local_dir_name,
-                                        const WCHAR* remote_dir_name, const struct dirent* entry,
-                                        wArrayList* files)
+static BOOL add_directory_entry_to_list(const char* local_dir_name, const WCHAR* remote_dir_name,
+                                        const struct dirent* entry, wArrayList* files)
 {
 	BOOL result = FALSE;
 	char* local_name = NULL;
@@ -275,7 +266,7 @@ static BOOL add_directory_entry_to_list(wClipboard* clipboard, const char* local
 	if ((strcmp(entry->d_name, ".") == 0) || (strcmp(entry->d_name, "..") == 0))
 		return TRUE;
 
-	remote_base_name = convert_local_name_component_to_remote(clipboard, entry->d_name);
+	remote_base_name = convert_local_name_component_to_remote(entry->d_name);
 
 	if (!remote_base_name)
 		return FALSE;
@@ -284,7 +275,7 @@ static BOOL add_directory_entry_to_list(wClipboard* clipboard, const char* local
 	remote_name = concat_remote_name(remote_dir_name, remote_base_name);
 
 	if (local_name && remote_name)
-		result = add_file_to_list(clipboard, local_name, remote_name, files);
+		result = add_file_to_list(local_name, remote_name, files);
 
 	free(remote_base_name);
 	free(remote_name);
@@ -292,9 +283,8 @@ static BOOL add_directory_entry_to_list(wClipboard* clipboard, const char* local
 	return result;
 }
 
-static BOOL do_add_directory_contents_to_list(wClipboard* clipboard, const char* local_name,
-                                              const WCHAR* remote_name, DIR* dirp,
-                                              wArrayList* files)
+static BOOL do_add_directory_contents_to_list(const char* local_name, const WCHAR* remote_name,
+                                              DIR* dirp, wArrayList* files)
 {
 	/*
 	 * For some reason POSIX does not require readdir() to be thread-safe.
@@ -326,15 +316,15 @@ static BOOL do_add_directory_contents_to_list(wClipboard* clipboard, const char*
 			return FALSE;
 		}
 
-		if (!add_directory_entry_to_list(clipboard, local_name, remote_name, entry, files))
+		if (!add_directory_entry_to_list(local_name, remote_name, entry, files))
 			return FALSE;
 	}
 
 	return TRUE;
 }
 
-static BOOL add_directory_contents_to_list(wClipboard* clipboard, const char* local_name,
-                                           const WCHAR* remote_name, wArrayList* files)
+static BOOL add_directory_contents_to_list(const char* local_name, const WCHAR* remote_name,
+                                           wArrayList* files)
 {
 	BOOL result = FALSE;
 	DIR* dirp = NULL;
@@ -348,7 +338,7 @@ static BOOL add_directory_contents_to_list(wClipboard* clipboard, const char* lo
 		goto out;
 	}
 
-	result = do_add_directory_contents_to_list(clipboard, local_name, remote_name, dirp, files);
+	result = do_add_directory_contents_to_list(local_name, remote_name, dirp, files);
 
 	if (closedir(dirp))
 	{
@@ -360,8 +350,7 @@ out:
 	return result;
 }
 
-static BOOL add_file_to_list(wClipboard* clipboard, const char* local_name,
-                             const WCHAR* remote_name, wArrayList* files)
+static BOOL add_file_to_list(const char* local_name, const WCHAR* remote_name, wArrayList* files)
 {
 	struct posix_file* file = NULL;
 	WLog_VRB(TAG, "adding file: %s", local_name);
@@ -382,7 +371,7 @@ static BOOL add_file_to_list(wClipboard* clipboard, const char* local_name,
 		 * This is effectively a recursive call, but we do not track
 		 * recursion depth, thus filesystem loops can cause a crash.
 		 */
-		if (!add_directory_contents_to_list(clipboard, local_name, remote_name, files))
+		if (!add_directory_contents_to_list(local_name, remote_name, files))
 			return FALSE;
 	}
 
@@ -403,7 +392,7 @@ static const char* get_basename(const char* name)
 	return last_name;
 }
 
-static BOOL process_file_name(wClipboard* clipboard, const char* local_name, wArrayList* files)
+static BOOL process_file_name(const char* local_name, wArrayList* files)
 {
 	BOOL result = FALSE;
 	const char* base_name = NULL;
@@ -414,17 +403,17 @@ static BOOL process_file_name(wClipboard* clipboard, const char* local_name, wAr
 	 * to have names relative to that selection.
 	 */
 	base_name = get_basename(local_name);
-	remote_name = convert_local_name_component_to_remote(clipboard, base_name);
+	remote_name = convert_local_name_component_to_remote(base_name);
 
 	if (!remote_name)
 		return FALSE;
 
-	result = add_file_to_list(clipboard, local_name, remote_name, files);
+	result = add_file_to_list(local_name, remote_name, files);
 	free(remote_name);
 	return result;
 }
 
-static BOOL process_uri(wClipboard* clipboard, const char* uri, size_t uri_len, wArrayList* files)
+static BOOL process_uri(const char* uri, size_t uri_len, wArrayList* files)
 {
 	const char prefix[] = "file://";
 	BOOL result = FALSE;
@@ -443,14 +432,13 @@ static BOOL process_uri(wClipboard* clipboard, const char* uri, size_t uri_len, 
 	if (!name)
 		goto out;
 
-	result = process_file_name(clipboard, name, files);
+	result = process_file_name(name, files);
 out:
 	free(name);
 	return result;
 }
 
-static BOOL process_uri_list(wClipboard* clipboard, const char* data, size_t length,
-                             wArrayList* files)
+static BOOL process_uri_list(const char* data, size_t length, wArrayList* files)
 {
 	const char* cur = data;
 	const char* lim = data + length;
@@ -497,7 +485,7 @@ static BOOL process_uri_list(wClipboard* clipboard, const char* data, size_t len
 		if (comment)
 			continue;
 
-		if (!process_uri(clipboard, start, stop - start, files))
+		if (!process_uri(start, stop - start, files))
 			return FALSE;
 	}
 
@@ -573,7 +561,7 @@ static void* convert_uri_list_to_filedescriptors(wClipboard* clipboard, UINT32 f
 	if (formatId != ClipboardGetFormatId(clipboard, "text/uri-list"))
 		return NULL;
 
-	if (!process_uri_list(clipboard, (const char*)data, *pSize, clipboard->localFiles))
+	if (!process_uri_list((const char*)data, *pSize, clipboard->localFiles))
 		return NULL;
 
 	descriptors = convert_local_file_list_to_filedescriptors(clipboard->localFiles);
@@ -958,7 +946,6 @@ static void setup_delegate(wClipboardDelegate* delegate)
 	delegate->ClientRequestFileRange = posix_file_request_range;
 	delegate->ClipboardFileRangeSuccess = dummy_file_range_success;
 	delegate->ClipboardFileRangeFailure = dummy_file_range_failure;
-	delegate->IsFileNameComponentValid = ValidFileNameComponent;
 }
 
 BOOL ClipboardInitPosixFileSubsystem(wClipboard* clipboard)

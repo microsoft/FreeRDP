@@ -400,19 +400,18 @@ static int xf_keyboard_execute_action_script(xfContext* xfc, XF_MODIFIER_KEYS* m
 	}
 
 	if (mod->Shift)
-		winpr_str_append("Shift", combination, sizeof(combination), "+");
+		strcat(combination, "Shift+");
 
 	if (mod->Ctrl)
-		winpr_str_append("Ctrl", combination, sizeof(combination), "+");
+		strcat(combination, "Ctrl+");
 
 	if (mod->Alt)
-		winpr_str_append("Alt", combination, sizeof(combination), "+");
+		strcat(combination, "Alt+");
 
 	if (mod->Super)
-		winpr_str_append("Super", combination, sizeof(combination), "+");
+		strcat(combination, "Super+");
 
-	winpr_str_append(keyStr, combination, sizeof(combination), NULL);
-
+	strcat(combination, keyStr);
 	count = ArrayList_Count(xfc->keyCombinations);
 
 	for (index = 0; index < count; index++)

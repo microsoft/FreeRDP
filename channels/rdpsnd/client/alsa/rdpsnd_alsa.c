@@ -213,6 +213,10 @@ static BOOL rdpsnd_alsa_set_format(rdpsndDevicePlugin* device, const AUDIO_FORMA
 
 				break;
 
+			case WAVE_FORMAT_ALAW:
+			case WAVE_FORMAT_MULAW:
+				break;
+
 			default:
 				return FALSE;
 		}

@@ -34,8 +34,6 @@ typedef enum ECHO_SERVER_OPEN_RESULT
 
 typedef struct _echo_server_context echo_server_context;
 
-typedef BOOL (*psEchoServerChannelIdAssigned)(echo_server_context* context, UINT32 channelId);
-
 typedef UINT (*psEchoServerOpen)(echo_server_context* context);
 typedef UINT (*psEchoServerClose)(echo_server_context* context);
 typedef BOOL (*psEchoServerRequest)(echo_server_context* context, const BYTE* buffer,
@@ -78,11 +76,6 @@ struct _echo_server_context
 	psEchoServerResponse Response;
 
 	rdpContext* rdpcontext;
-
-	/**
-	 * Callback, when the channel got its id assigned.
-	 */
-	psEchoServerChannelIdAssigned ChannelIdAssigned;
 };
 
 #ifdef __cplusplus

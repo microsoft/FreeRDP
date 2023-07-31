@@ -21,7 +21,7 @@
 #include "config.h"
 #endif
 
-#if defined(WITH_NEON)
+#if defined(__ARM_NEON__)
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -241,4 +241,4 @@ void rfx_init_neon(RFX_CONTEXT* context)
 	}
 }
 
-#endif // WITH_NEON
+#endif // __ARM_NEON__

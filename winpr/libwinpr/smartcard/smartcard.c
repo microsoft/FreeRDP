@@ -1047,47 +1047,103 @@ WINSCARDAPI const char* WINAPI SCardGetCardStateString(DWORD dwCardState)
 
 WINSCARDAPI char* WINAPI SCardGetReaderStateString(DWORD dwReaderState)
 {
-	const size_t size = 512;
-	char* buffer = calloc(size, sizeof(char));
+	char* szReaderState = malloc(512);
 
-	if (!buffer)
+	if (!szReaderState)
 		return NULL;
 
+	szReaderState[0] = '\0';
+
 	if (dwReaderState & SCARD_STATE_IGNORE)
-		winpr_str_append("SCARD_STATE_IGNORE", buffer, size, "|");
+	{
+		if (szReaderState[0])
+			strcat(szReaderState, " | ");
+
+		strcat(szReaderState, "SCARD_STATE_IGNORE");
+	}
 
 	if (dwReaderState & SCARD_STATE_CHANGED)
-		winpr_str_append("SCARD_STATE_CHANGED", buffer, size, "|");
+	{
+		if (szReaderState[0])
+			strcat(szReaderState, " | ");
+
+		strcat(szReaderState, "SCARD_STATE_CHANGED");
+	}
 
 	if (dwReaderState & SCARD_STATE_UNKNOWN)
-		winpr_str_append("SCARD_STATE_UNKNOWN", buffer, size, "|");
+	{
+		if (szReaderState[0])
+			strcat(szReaderState, " | ");
+
+		strcat(szReaderState, "SCARD_STATE_UNKNOWN");
+	}
 
 	if (dwReaderState & SCARD_STATE_UNAVAILABLE)
-		winpr_str_append("SCARD_STATE_UNAVAILABLE", buffer, size, "|");
+	{
+		if (szReaderState[0])
+			strcat(szReaderState, " | ");
+
+		strcat(szReaderState, "SCARD_STATE_UNAVAILABLE");
+	}
 
 	if (dwReaderState & SCARD_STATE_EMPTY)
-		winpr_str_append("SCARD_STATE_EMPTY", buffer, size, "|");
+	{
+		if (szReaderState[0])
+			strcat(szReaderState, " | ");
+
+		strcat(szReaderState, "SCARD_STATE_EMPTY");
+	}
 
 	if (dwReaderState & SCARD_STATE_PRESENT)
-		winpr_str_append("SCARD_STATE_PRESENT", buffer, size, "|");
+	{
+		if (szReaderState[0])
+			strcat(szReaderState, " | ");
+
+		strcat(szReaderState, "SCARD_STATE_PRESENT");
+	}
 
 	if (dwReaderState & SCARD_STATE_ATRMATCH)
-		winpr_str_append("SCARD_STATE_ATRMATCH", buffer, size, "|");
+	{
+		if (szReaderState[0])
+			strcat(szReaderState, " | ");
+
+		strcat(szReaderState, "SCARD_STATE_ATRMATCH");
+	}
 
 	if (dwReaderState & SCARD_STATE_EXCLUSIVE)
-		winpr_str_append("SCARD_STATE_EXCLUSIVE", buffer, size, "|");
+	{
+		if (szReaderState[0])
+			strcat(szReaderState, " | ");
+
+		strcat(szReaderState, "SCARD_STATE_EXCLUSIVE");
+	}
 
 	if (dwReaderState & SCARD_STATE_INUSE)
-		winpr_str_append("SCARD_STATE_INUSE", buffer, size, "|");
+	{
+		if (szReaderState[0])
+			strcat(szReaderState, " | ");
+
+		strcat(szReaderState, "SCARD_STATE_INUSE");
+	}
 
 	if (dwReaderState & SCARD_STATE_MUTE)
-		winpr_str_append("SCARD_STATE_MUTE", buffer, size, "|");
+	{
+		if (szReaderState[0])
+			strcat(szReaderState, " | ");
+
+		strcat(szReaderState, "SCARD_STATE_MUTE");
+	}
 
 	if (dwReaderState & SCARD_STATE_UNPOWERED)
-		winpr_str_append("SCARD_STATE_UNPOWERED", buffer, size, "|");
+	{
+		if (szReaderState[0])
+			strcat(szReaderState, " | ");
 
-	if (!buffer[0])
-		winpr_str_append("SCARD_STATE_UNAWARE", buffer, size, "|");
+		strcat(szReaderState, "SCARD_STATE_UNPOWERED");
+	}
 
-	return buffer;
+	if (!szReaderState[0])
+		strcat(szReaderState, "SCARD_STATE_UNAWARE");
+
+	return szReaderState;
 }

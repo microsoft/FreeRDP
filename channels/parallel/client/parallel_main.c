@@ -159,7 +159,7 @@ static UINT parallel_process_irp_read(PARALLEL_DEVICE* parallel, IRP* irp)
 		return ERROR_INVALID_DATA;
 	Stream_Read_UINT32(irp->input, Length);
 	Stream_Read_UINT64(irp->input, Offset);
-	buffer = (BYTE*)calloc(Length, sizeof(BYTE));
+	buffer = (BYTE*)malloc(Length);
 
 	if (!buffer)
 	{
@@ -178,7 +178,6 @@ static UINT parallel_process_irp_read(PARALLEL_DEVICE* parallel, IRP* irp)
 	}
 	else
 	{
-		Length = status;
 	}
 
 	Stream_Write_UINT32(irp->output, Length);

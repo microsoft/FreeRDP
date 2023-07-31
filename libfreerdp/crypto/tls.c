@@ -77,7 +77,6 @@ struct _BIO_RDP_TLS
 };
 typedef struct _BIO_RDP_TLS BIO_RDP_TLS;
 
-static BOOL tls_prep(rdpTls* tls, BIO* underlying, int options, BOOL clientMode);
 static int tls_verify_certificate(rdpTls* tls, CryptoCert cert, const char* hostname, UINT16 port);
 static void tls_print_certificate_name_mismatch_error(const char* hostname, UINT16 port,
                                                       const char* common_name, char** alt_names,
@@ -324,8 +323,7 @@ static long bio_rdp_tls_ctrl(BIO* bio, int cmd, long num, void* ptr)
 		case BIO_CTRL_PUSH:
 			if (next_bio && (next_bio != ssl_rbio))
 			{
-#if OPENSSL_VERSION_NUMBER < 0x10100000L || \
-    (defined(LIBRESSL_VERSION_NUMBER) && LIBRESSL_VERSION_NUMBER < 0x2070000fL)
+#if OPENSSL_VERSION_NUMBER < 0x10100000L || defined(LIBRESSL_VERSION_NUMBER)
 				SSL_set_bio(tls->ssl, next_bio, next_bio);
 				CRYPTO_add(&(bio->next_bio->references), 1, CRYPTO_LOCK_BIO);
 #else
@@ -349,8 +347,7 @@ static long bio_rdp_tls_ctrl(BIO* bio, int cmd, long num, void* ptr)
 				if (ssl_rbio != ssl_wbio)
 					BIO_free_all(ssl_wbio);
 
-#if OPENSSL_VERSION_NUMBER < 0x10100000L || \
-    (defined(LIBRESSL_VERSION_NUMBER) && LIBRESSL_VERSION_NUMBER < 0x2070000fL)
+#if OPENSSL_VERSION_NUMBER < 0x10100000L || defined(LIBRESSL_VERSION_NUMBER)
 
 				if (next_bio)
 					CRYPTO_add(&(bio->next_bio->references), -1, CRYPTO_LOCK_BIO);
@@ -390,8 +387,7 @@ static long bio_rdp_tls_ctrl(BIO* bio, int cmd, long num, void* ptr)
 					BIO_push(ssl_rbio, next_bio);
 
 				BIO_set_next(bio, ssl_rbio);
-#if OPENSSL_VERSION_NUMBER < 0x10100000L || \
-    (defined(LIBRESSL_VERSION_NUMBER) && LIBRESSL_VERSION_NUMBER < 0x2070000fL)
+#if OPENSSL_VERSION_NUMBER < 0x10100000L || defined(LIBRESSL_VERSION_NUMBER)
 				CRYPTO_add(&(ssl_rbio->references), 1, CRYPTO_LOCK_BIO);
 #else
 				BIO_up_ref(ssl_rbio);
@@ -617,25 +613,7 @@ static SecPkgContext_Bindings* tls_get_channel_bindings(X509* cert)
 	SEC_CHANNEL_BINDINGS* ChannelBindings;
 	SecPkgContext_Bindings* ContextBindings;
 	const size_t PrefixLength = strnlen(TLS_SERVER_END_POINT, ARRAYSIZE(TLS_SERVER_END_POINT));
-
-	/* See https://www.rfc-editor.org/rfc/rfc5929 for details about hashes */
-	WINPR_MD_TYPE alg = crypto_cert_get_signature_alg(cert);
-	const char* hash;
-	switch (alg)
-	{
-
-		case WINPR_MD_MD5:
-		case WINPR_MD_SHA1:
-			hash = winpr_md_type_to_string(WINPR_MD_SHA256);
-			break;
-		default:
-			hash = winpr_md_type_to_string(alg);
-			break;
-	}
-	if (!hash)
-		return NULL;
-
-	BYTE* CertificateHash = crypto_cert_hash(cert, hash, &CertificateHashLength);
+	BYTE* CertificateHash = crypto_cert_hash(cert, "sha256", &CertificateHashLength);
 	if (!CertificateHash)
 		return NULL;
 
@@ -686,18 +664,8 @@ static BOOL tls_prepare(rdpTls* tls, BIO* underlying, SSL_METHOD* method, int op
 	SSL_CTX_set_options(tls->ctx, options);
 	SSL_CTX_set_read_ahead(tls->ctx, 1);
 #if OPENSSL_VERSION_NUMBER >= 0x10100000L || defined(LIBRESSL_VERSION_NUMBER)
-	UINT16 version = freerdp_settings_get_uint16(settings, FreeRDP_TLSMinVersion);
-	if (!SSL_CTX_set_min_proto_version(tls->ctx, version))
-	{
-		WLog_ERR(TAG, "SSL_CTX_set_min_proto_version %s failed", version);
-		return FALSE;
-	}
-	version = freerdp_settings_get_uint16(settings, FreeRDP_TLSMaxVersion);
-	if (!SSL_CTX_set_max_proto_version(tls->ctx, version))
-	{
-		WLog_ERR(TAG, "SSL_CTX_set_max_proto_version %s failed", version);
-		return FALSE;
-	}
+	SSL_CTX_set_min_proto_version(tls->ctx, TLS1_VERSION); /* min version */
+	SSL_CTX_set_max_proto_version(tls->ctx, 0); /* highest supported version by library */
 #endif
 #if OPENSSL_VERSION_NUMBER >= 0x10100000L && !defined(LIBRESSL_VERSION_NUMBER)
 	SSL_CTX_set_security_level(tls->ctx, settings->TlsSecLevel);
@@ -884,18 +852,6 @@ int tls_connect(rdpTls* tls, BIO* underlying)
 	 * support empty fragments. This needs to be disabled.
 	 */
 	options |= SSL_OP_DONT_INSERT_EMPTY_FRAGMENTS;
-
-	if (!tls_prep(tls, underlying, options, TRUE))
-		return 0;
-
-#if !defined(OPENSSL_NO_TLSEXT) && !defined(LIBRESSL_VERSION_NUMBER)
-	SSL_set_tlsext_host_name(tls->ssl, tls->hostname);
-#endif
-	return tls_do_handshake(tls, TRUE);
-}
-
-BOOL tls_prep(rdpTls* tls, BIO* underlying, int options, BOOL clientMode)
-{
 #if OPENSSL_VERSION_NUMBER < 0x10100000L || defined(LIBRESSL_VERSION_NUMBER)
 	/**
 	 * disable SSLv2 and SSLv3
@@ -903,10 +859,16 @@ BOOL tls_prep(rdpTls* tls, BIO* underlying, int options, BOOL clientMode)
 	options |= SSL_OP_NO_SSLv2;
 	options |= SSL_OP_NO_SSLv3;
 
-	return tls_prepare(tls, underlying, SSLv23_client_method(), options, clientMode);
+	if (!tls_prepare(tls, underlying, SSLv23_client_method(), options, TRUE))
 #else
-	return tls_prepare(tls, underlying, TLS_client_method(), options, clientMode);
+	if (!tls_prepare(tls, underlying, TLS_client_method(), options, TRUE))
 #endif
+		return FALSE;
+
+#if !defined(OPENSSL_NO_TLSEXT) && !defined(LIBRESSL_VERSION_NUMBER)
+	SSL_set_tlsext_host_name(tls->ssl, tls->hostname);
+#endif
+	return tls_do_handshake(tls, TRUE);
 }
 
 #if defined(MICROSOFT_IOS_SNI_BUG) && !defined(OPENSSL_NO_TLSEXT) && \

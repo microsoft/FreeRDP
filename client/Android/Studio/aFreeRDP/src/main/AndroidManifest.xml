@@ -14,7 +14,6 @@
 
         <!-- Main activity -->
         <activity
-            android:exported="true"
             android:name="com.freerdp.freerdpcore.presentation.HomeActivity"
             android:alwaysRetainTaskState="true"
             android:label="@string/app_title"
@@ -75,7 +74,6 @@
         <!-- This should actually be defined in FreeRDPCore lib but Android manifest merging will -->
         <!-- append the libs manifest to the apps manifest and therefore aliasing is not possible -->
         <activity
-            android:exported="true"
             android:name="com.freerdp.freerdpcore.services.SessionRequestHandlerActivity"
             android:excludeFromRecents="true"
             android:noHistory="true"

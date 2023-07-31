@@ -154,7 +154,8 @@ static const RPC_FAULT_CODE RPC_FAULT_CODES[] = {
 	DEFINE_RPC_FAULT_CODE(RPC_S_COOKIE_AUTH_FAILED, CAT_GATEWAY),
 	DEFINE_RPC_FAULT_CODE(RPC_S_GROUP_MEMBER_NOT_FOUND, CAT_GATEWAY),
 	DEFINE_RPC_FAULT_CODE(EPT_S_CANT_CREATE, CAT_GATEWAY),
-	DEFINE_RPC_FAULT_CODE(RPC_S_INVALID_OBJECT, CAT_GATEWAY)
+	DEFINE_RPC_FAULT_CODE(RPC_S_INVALID_OBJECT, CAT_GATEWAY),
+	{ 0, NULL, NULL }
 };
 
 static const RPC_FAULT_CODE RPC_TSG_FAULT_CODES[] = {
@@ -206,7 +207,8 @@ static const RPC_FAULT_CODE RPC_TSG_FAULT_CODES[] = {
 	{ HRESULT_CODE(E_PROXY_REAUTH_NAP_FAILED), "E_PROXY_REAUTH_NAP_FAILED", CAT_GATEWAY },
 	{ HRESULT_CODE(E_PROXY_CONNECTIONABORTED), "E_PROXY_CONNECTIONABORTED", CAT_GATEWAY },
 	{ HRESULT_CODE(E_PROXY_NOCERTAVAILABLE), "E_PROXY_NOCERTAVAILABLE", CAT_GATEWAY },
-	{ HRESULT_CODE(RPC_S_CALL_CANCELLED), "RPC_S_CALL_CANCELLED", CAT_GATEWAY }
+	{ HRESULT_CODE(RPC_S_CALL_CANCELLED), "RPC_S_CALL_CANCELLED", CAT_GATEWAY },
+	{ 0, NULL, NULL }
 };
 
 /**
@@ -359,32 +361,29 @@ const char* rpc_error_to_string(UINT32 code)
 	size_t index;
 	static char buffer[1024];
 
-	for (index = 0; index < ARRAYSIZE(RPC_FAULT_CODES); index++)
+	for (index = 0; RPC_FAULT_CODES[index].name != NULL; index++)
 	{
-		const RPC_FAULT_CODE* const current = &RPC_FAULT_CODES[index];
-		if (current->code == code)
+		if (RPC_FAULT_CODES[index].code == code)
 		{
-			sprintf_s(buffer, ARRAYSIZE(buffer), "%s", current->name);
+			sprintf_s(buffer, ARRAYSIZE(buffer), "%s", RPC_FAULT_CODES[index].name);
 			goto out;
 		}
 	}
 
-	for (index = 0; index < ARRAYSIZE(RPC_TSG_FAULT_CODES); index++)
+	for (index = 0; RPC_TSG_FAULT_CODES[index].name != NULL; index++)
 	{
-		const RPC_FAULT_CODE* const current = &RPC_TSG_FAULT_CODES[index];
-		if (current->code == code)
+		if (RPC_TSG_FAULT_CODES[index].code == code)
 		{
-			sprintf_s(buffer, ARRAYSIZE(buffer), "%s", current->name);
+			sprintf_s(buffer, ARRAYSIZE(buffer), "%s", RPC_TSG_FAULT_CODES[index].name);
 			goto out;
 		}
 	}
 
-	for (index = 0; index < ARRAYSIZE(RPC_TSG_FAULT_CODES); index++)
+	for (index = 0; RPC_TSG_FAULT_CODES[index].name != NULL; index++)
 	{
-		const RPC_FAULT_CODE* const current = &RPC_TSG_FAULT_CODES[index];
-		if (current->code == HRESULT_CODE(code))
+		if (RPC_TSG_FAULT_CODES[index].code == HRESULT_CODE(code))
 		{
-			sprintf_s(buffer, ARRAYSIZE(buffer), "%s", current->name);
+			sprintf_s(buffer, ARRAYSIZE(buffer), "%s", RPC_TSG_FAULT_CODES[index].name);
 			goto out;
 		}
 	}
@@ -398,25 +397,22 @@ const char* rpc_error_to_category(UINT32 code)
 {
 	size_t index;
 
-	for (index = 0; index < ARRAYSIZE(RPC_FAULT_CODES); index++)
+	for (index = 0; RPC_FAULT_CODES[index].category != NULL; index++)
 	{
-		const RPC_FAULT_CODE* const current = &RPC_FAULT_CODES[index];
-		if (current->code == code)
-			return current->category;
+		if (RPC_FAULT_CODES[index].code == code)
+			return RPC_FAULT_CODES[index].category;
 	}
 
-	for (index = 0; index < ARRAYSIZE(RPC_TSG_FAULT_CODES); index++)
+	for (index = 0; RPC_TSG_FAULT_CODES[index].category != NULL; index++)
 	{
-		const RPC_FAULT_CODE* const current = &RPC_TSG_FAULT_CODES[index];
-		if (current->code == code)
-			return current->category;
+		if (RPC_TSG_FAULT_CODES[index].code == code)
+			return RPC_TSG_FAULT_CODES[index].category;
 	}
 
-	for (index = 0; index < ARRAYSIZE(RPC_TSG_FAULT_CODES); index++)
+	for (index = 0; RPC_TSG_FAULT_CODES[index].category != NULL; index++)
 	{
-		const RPC_FAULT_CODE* const current = &RPC_TSG_FAULT_CODES[index];
-		if (current->code == HRESULT_CODE(code))
-			return current->category;
+		if (RPC_TSG_FAULT_CODES[index].code == HRESULT_CODE(code))
+			return RPC_TSG_FAULT_CODES[index].category;
 	}
 
 	return "UNKNOWN";

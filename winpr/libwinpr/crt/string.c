@@ -26,30 +26,12 @@
 #include <wctype.h>
 
 #include <winpr/crt.h>
-#include <winpr/assert.h>
 #include <winpr/endian.h>
 
 /* String Manipulation (CRT): http://msdn.microsoft.com/en-us/library/f0151s4x.aspx */
 
 #include "../log.h"
 #define TAG WINPR_TAG("crt")
-
-BOOL winpr_str_append(const char* what, char* buffer, size_t size, const char* separator)
-{
-	const size_t used = strnlen(buffer, size);
-	const size_t add = strnlen(what, size);
-	const size_t sep_len = separator ? strnlen(separator, size) : 0;
-	const size_t sep = (used > 0) ? sep_len : 0;
-
-	if (used + add + sep >= size)
-		return FALSE;
-
-	if ((used > 0) && (sep_len > 0))
-		strncat(buffer, separator, sep_len);
-
-	strncat(buffer, what, add);
-	return TRUE;
-}
 
 #ifndef _WIN32
 
@@ -98,39 +80,17 @@ int _strnicmp(const char* string1, const char* string2, size_t count)
 
 int _wcscmp(const WCHAR* string1, const WCHAR* string2)
 {
-	WINPR_ASSERT(string1);
-	WINPR_ASSERT(string2);
+	WCHAR value1, value2;
 
-	while (TRUE)
+	while (*string1 && (*string1 == *string2))
 	{
-		const WCHAR w1 = *string1++;
-		const WCHAR w2 = *string2++;
-
-		if (w1 != w2)
-			return (int)w1 - w2;
-		else if ((w1 == '\0') || (w2 == '\0'))
-			return (int)w1 - w2;
+		string1++;
+		string2++;
 	}
 
-	return 0;
-}
-
-int _wcsncmp(const WCHAR* string1, const WCHAR* string2, size_t count)
-{
-	WINPR_ASSERT(string1);
-	WINPR_ASSERT(string2);
-
-	for (size_t x = 0; x < count; x++)
-	{
-		const WCHAR a = string1[x];
-		const WCHAR b = string2[x];
-
-		if (a != b)
-			return (int)a - b;
-		else if ((a == '\0') || (b == '\0'))
-			return (int)a - b;
-	}
-	return 0;
+	Data_Read_UINT16(string1, value1);
+	Data_Read_UINT16(string2, value2);
+	return value1 - value2;
 }
 
 /* _wcslen -> wcslen */
@@ -139,7 +99,8 @@ size_t _wcslen(const WCHAR* str)
 {
 	const WCHAR* p = (const WCHAR*)str;
 
-	WINPR_ASSERT(p);
+	if (!p)
+		return 0;
 
 	while (*p)
 		p++;
@@ -153,7 +114,8 @@ size_t _wcsnlen(const WCHAR* str, size_t max)
 {
 	size_t x;
 
-	WINPR_ASSERT(str);
+	if (!str)
+		return 0;
 
 	for (x = 0; x < max; x++)
 	{
@@ -162,26 +124,6 @@ size_t _wcsnlen(const WCHAR* str, size_t max)
 	}
 
 	return x;
-}
-
-/* _wcsstr -> wcsstr */
-
-WCHAR* _wcsstr(const WCHAR* str, const WCHAR* strSearch)
-{
-	WINPR_ASSERT(str);
-	WINPR_ASSERT(strSearch);
-
-	if (strSearch[0] == '\0')
-		return str;
-
-	const size_t searchLen = _wcslen(strSearch);
-	while (*str)
-	{
-		if (_wcsncmp(str, strSearch, searchLen) == 0)
-			return str;
-		str++;
-	}
-	return NULL;
 }
 
 /* _wcschr -> wcschr */
