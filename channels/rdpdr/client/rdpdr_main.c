@@ -31,10 +31,7 @@
 #include <string.h>
 
 #include <winpr/crt.h>
-#include <winpr/sysinfo.h>
 #include <winpr/stream.h>
-
-#include <winpr/sspicli.h>
 
 #include <freerdp/types.h>
 #include <freerdp/constants.h>
@@ -207,6 +204,7 @@ LRESULT CALLBACK hotplug_proc(HWND hWnd, UINT Msg, WPARAM wParam, LPARAM lParam)
 
 									drive.Type = RDPDR_DTYP_FILESYSTEM;
 									drive.Path = drive_path;
+									drive_path[1] = '\0';
 									drive.automount = TRUE;
 									drive.Name = drive_name;
 									devman_load_device_service(rdpdr->devman,
@@ -585,6 +583,7 @@ static DWORD WINAPI drive_hotplug_thread_func(LPVOID arg)
 
 #else
 
+
 static const char* automountLocations[] = { "/run/user/%lu/gvfs", "/run/media/%s", "/media/%s",
 	                                        "/media", "/mnt" };
 
@@ -592,13 +591,16 @@ static BOOL isAutomountLocation(const char* path)
 {
 	const size_t nrLocations = sizeof(automountLocations) / sizeof(automountLocations[0]);
 	size_t x;
-	char buffer[MAX_PATH] = { 0 };
+	char buffer[MAX_PATH];
 	uid_t uid = getuid();
 	char uname[MAX_PATH] = { 0 };
-	ULONG size = sizeof(uname) - 1;
 
-	if (!GetUserNameExA(NameSamCompatible, uname, &size))
+#ifndef HAVE_GETLOGIN_R
+	strncpy(uname, getlogin(), sizeof(uname));
+#else
+	if (getlogin_r(uname, sizeof(uname)) != 0)
 		return FALSE;
+#endif
 
 	if (!path)
 		return FALSE;
@@ -654,7 +656,7 @@ static void handle_mountpoint(hotplug_dev* dev_array, size_t* size, const char* 
 	if (isAutomountLocation(mountpoint) && (*size < MAX_USB_DEVICES))
 	{
 		dev_array[*size].path = _strdup(mountpoint);
-		dev_array[*size].to_add = TRUE;
+		dev_array[*size + 1].to_add = TRUE;
 		(*size)++;
 	}
 }
@@ -1115,10 +1117,7 @@ static UINT rdpdr_send_client_name_request(rdpdrPlugin* rdpdr)
 	size_t computerNameLenW;
 
 	if (!rdpdr->computerName[0])
-	{
-		DWORD size = sizeof(rdpdr->computerName) - 1;
-		GetComputerNameA(rdpdr->computerName, &size);
-	}
+		gethostname(rdpdr->computerName, sizeof(rdpdr->computerName) - 1);
 
 	computerNameLenW = ConvertToUnicode(CP_UTF8, 0, rdpdr->computerName, -1, &computerNameW, 0) * 2;
 	s = Stream_New(NULL, 16 + computerNameLenW + 2);

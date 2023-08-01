@@ -27,7 +27,6 @@
 #include "rdp.h"
 
 #include "info.h"
-#include "utils.h"
 #include "redirection.h"
 
 #include <freerdp/crypto/per.h>
@@ -415,7 +414,7 @@ BOOL rdp_read_header(rdpRdp* rdp, wStream* s, UINT16* length, UINT16* channelId)
 	{
 		if (code == X224_TPDU_DISCONNECT_REQUEST)
 		{
-			utils_abort_connect(rdp->instance->context);
+			freerdp_abort_connect(rdp->instance);
 			return TRUE;
 		}
 
@@ -472,7 +471,7 @@ BOOL rdp_read_header(rdpRdp* rdp, wStream* s, UINT16* length, UINT16* channelId)
 		}
 
 		WLog_DBG(TAG, "DisconnectProviderUltimatum: reason: %d", reason);
-		utils_abort_connect(context);
+		freerdp_abort_connect(rdp->instance);
 		EventArgsInit(&e, "freerdp");
 		e.code = 0;
 		PubSub_OnTerminate(context->pubSub, context, &e);
@@ -1502,14 +1501,13 @@ int rdp_recv_callback(rdpTransport* transport, wStream* s, void* extra)
 	 * enters the active state, an auto-detect PDU can be received
 	 * on the MCS message channel.
 	 */
-	if ((rdp_get_state(rdp) > CONNECTION_STATE_MCS_CHANNEL_JOIN) &&
-	    (rdp_get_state(rdp) < CONNECTION_STATE_ACTIVE))
+	if ((rdp->state > CONNECTION_STATE_MCS_CHANNEL_JOIN) && (rdp->state < CONNECTION_STATE_ACTIVE))
 	{
 		if (rdp_client_connect_auto_detect(rdp, s))
 			return 0;
 	}
 
-	switch (rdp_get_state(rdp))
+	switch (rdp->state)
 	{
 		case CONNECTION_STATE_NLA:
 			if (nla_get_state(rdp->nla) < NLA_STATE_AUTH_INFO)
@@ -1517,7 +1515,7 @@ int rdp_recv_callback(rdpTransport* transport, wStream* s, void* extra)
 				if (nla_recv_pdu(rdp->nla, s) < 1)
 				{
 					WLog_ERR(TAG, "%s: %s - nla_recv_pdu() fail", __FUNCTION__,
-					         rdp_state_string(rdp_get_state(rdp)));
+					         rdp_server_connection_state_string(rdp->state));
 					return -1;
 				}
 			}
@@ -1528,7 +1526,7 @@ int rdp_recv_callback(rdpTransport* transport, wStream* s, void* extra)
 				if (nego_get_state(rdp->nego) != NEGO_STATE_FINAL)
 				{
 					WLog_ERR(TAG, "%s: %s - nego_recv() fail", __FUNCTION__,
-					         rdp_state_string(rdp_get_state(rdp)));
+					         rdp_server_connection_state_string(rdp->state));
 					return -1;
 				}
 
@@ -1568,7 +1566,7 @@ int rdp_recv_callback(rdpTransport* transport, wStream* s, void* extra)
 				if (!mcs_client_begin(rdp->mcs))
 				{
 					WLog_ERR(TAG, "%s: %s - mcs_client_begin() fail", __FUNCTION__,
-					         rdp_state_string(rdp_get_state(rdp)));
+					         rdp_server_connection_state_string(rdp->state));
 					return -1;
 				}
 			}
@@ -1619,7 +1617,7 @@ int rdp_recv_callback(rdpTransport* transport, wStream* s, void* extra)
 				WLog_ERR(TAG,
 				         "%s: %s - "
 				         "rdp_client_connect_mcs_channel_join_confirm() fail",
-				         __FUNCTION__, rdp_state_string(rdp_get_state(rdp)));
+				         __FUNCTION__, rdp_server_connection_state_string(rdp->state));
 				status = -1;
 			}
 
@@ -1630,7 +1628,7 @@ int rdp_recv_callback(rdpTransport* transport, wStream* s, void* extra)
 
 			if (status < 0)
 				WLog_DBG(TAG, "%s: %s - rdp_client_connect_license() - %i", __FUNCTION__,
-				         rdp_state_string(rdp_get_state(rdp)), status);
+				         rdp_server_connection_state_string(rdp->state), status);
 
 			break;
 
@@ -1641,7 +1639,7 @@ int rdp_recv_callback(rdpTransport* transport, wStream* s, void* extra)
 				WLog_DBG(TAG,
 				         "%s: %s - "
 				         "rdp_client_connect_demand_active() - %i",
-				         __FUNCTION__, rdp_state_string(rdp_get_state(rdp)), status);
+				         __FUNCTION__, rdp_server_connection_state_string(rdp->state), status);
 
 			break;
 
@@ -1656,7 +1654,7 @@ int rdp_recv_callback(rdpTransport* transport, wStream* s, void* extra)
 
 			if (status < 0)
 				WLog_DBG(TAG, "%s: %s - rdp_recv_pdu() - %i", __FUNCTION__,
-				         rdp_state_string(rdp_get_state(rdp)), status);
+				         rdp_server_connection_state_string(rdp->state), status);
 
 			break;
 
@@ -1665,13 +1663,13 @@ int rdp_recv_callback(rdpTransport* transport, wStream* s, void* extra)
 
 			if (status < 0)
 				WLog_DBG(TAG, "%s: %s - rdp_recv_pdu() - %i", __FUNCTION__,
-				         rdp_state_string(rdp_get_state(rdp)), status);
+				         rdp_server_connection_state_string(rdp->state), status);
 
 			break;
 
 		default:
-			WLog_ERR(TAG, "%s: %s state %d", __FUNCTION__, rdp_state_string(rdp_get_state(rdp)),
-			         rdp_get_state(rdp));
+			WLog_ERR(TAG, "%s: %s state %d", __FUNCTION__,
+			         rdp_server_connection_state_string(rdp->state), rdp->state);
 			status = -1;
 			break;
 	}
@@ -1874,8 +1872,17 @@ void rdp_reset(rdpRdp* rdp)
 	settings = rdp->settings;
 	bulk_reset(rdp->bulk);
 
-	rdp_free_rc4_decrypt_keys(rdp);
-	rdp_free_rc4_encrypt_keys(rdp);
+	if (rdp->rc4_decrypt_key)
+	{
+		winpr_RC4_Free(rdp->rc4_decrypt_key);
+		rdp->rc4_decrypt_key = NULL;
+	}
+
+	if (rdp->rc4_encrypt_key)
+	{
+		winpr_RC4_Free(rdp->rc4_encrypt_key);
+		rdp->rc4_encrypt_key = NULL;
+	}
 
 	if (rdp->fips_encrypt)
 	{
@@ -1934,8 +1941,8 @@ void rdp_free(rdpRdp* rdp)
 	if (rdp)
 	{
 		DeleteCriticalSection(&rdp->critical);
-		rdp_free_rc4_decrypt_keys(rdp);
-		rdp_free_rc4_encrypt_keys(rdp);
+		winpr_RC4_Free(rdp->rc4_decrypt_key);
+		winpr_RC4_Free(rdp->rc4_encrypt_key);
 		winpr_Cipher_Free(rdp->fips_encrypt);
 		winpr_Cipher_Free(rdp->fips_decrypt);
 		freerdp_settings_free(rdp->settings);
@@ -1954,38 +1961,4 @@ void rdp_free(rdpRdp* rdp)
 		bulk_free(rdp->bulk);
 		free(rdp);
 	}
-}
-
-BOOL rdp_reset_rc4_encrypt_keys(rdpRdp* rdp)
-{
-	WINPR_ASSERT(rdp);
-	rdp_free_rc4_encrypt_keys(rdp);
-	rdp->rc4_encrypt_key = winpr_RC4_New(rdp->encrypt_key, rdp->rc4_key_len);
-
-	rdp->encrypt_use_count = 0;
-	return rdp->rc4_encrypt_key != NULL;
-}
-
-void rdp_free_rc4_encrypt_keys(rdpRdp* rdp)
-{
-	WINPR_ASSERT(rdp);
-	winpr_RC4_Free(rdp->rc4_encrypt_key);
-	rdp->rc4_encrypt_key = NULL;
-}
-
-void rdp_free_rc4_decrypt_keys(rdpRdp* rdp)
-{
-	WINPR_ASSERT(rdp);
-	winpr_RC4_Free(rdp->rc4_decrypt_key);
-	rdp->rc4_decrypt_key = NULL;
-}
-
-BOOL rdp_reset_rc4_decrypt_keys(rdpRdp* rdp)
-{
-	WINPR_ASSERT(rdp);
-	rdp_free_rc4_decrypt_keys(rdp);
-	rdp->rc4_decrypt_key = winpr_RC4_New(rdp->decrypt_key, rdp->rc4_key_len);
-
-	rdp->decrypt_use_count = 0;
-	return rdp->rc4_decrypt_key != NULL;
 }

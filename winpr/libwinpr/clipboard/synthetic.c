@@ -321,107 +321,91 @@ static void* clipboard_synthesize_image_bmp(wClipboard* clipboard, UINT32 format
  */
 
 static void* clipboard_synthesize_html_format(wClipboard* clipboard, UINT32 formatId,
-                                              const void* pData, UINT32* pSize)
+                                              const void* data, UINT32* pSize)
 {
-	union
-	{
-		const void* cpv;
-		const char* cpc;
-		const BYTE* cpb;
-		WCHAR* pv;
-	} pSrcData;
+	char* pSrcData = NULL;
 	char* pDstData = NULL;
-	pSrcData.cpv = NULL;
-
-	WINPR_ASSERT(clipboard);
-	WINPR_ASSERT(pSize);
+	INT64 SrcSize = (INT64)*pSize;
 
 	if (formatId == ClipboardGetFormatId(clipboard, "text/html"))
 	{
-		const INT64 SrcSize = (INT64)*pSize;
-		const size_t DstSize = SrcSize + 200;
 		char* body;
-		char num[20] = { 0 };
-
-		/* Create a copy, we modify the input data */
-		pSrcData.pv = calloc(1, SrcSize + 1);
-		if (!pSrcData.pv)
-			goto fail;
-		memcpy(pSrcData.pv, pData, SrcSize);
+		BYTE bom[2];
+		char num[20];
+		WCHAR* wstr;
 
 		if (SrcSize > 2)
 		{
-			if (SrcSize > INT_MAX)
-				return NULL;
+			CopyMemory(bom, data, 2);
 
-			/* Check the BOM (Byte Order Mark) */
-			if ((pSrcData.cpb[0] == 0xFE) && (pSrcData.cpb[1] == 0xFF))
-				ByteSwapUnicode(pSrcData.pv, (int)(SrcSize / 2));
-
-			/* Check if we have WCHAR, convert to UTF-8 */
-			if ((pSrcData.cpb[0] == 0xFF) && (pSrcData.cpb[1] == 0xFE))
+			if ((bom[0] == 0xFE) && (bom[1] == 0xFF))
 			{
-				char* utfString = NULL;
-				ConvertFromUnicode(CP_UTF8, 0, &pSrcData.pv[1], (int)(SrcSize - 2) / 2, &utfString,
-				                   0, NULL, NULL);
-				free(pSrcData.pv);
-				pSrcData.cpc = utfString;
+				ByteSwapUnicode((WCHAR*)data, SrcSize / 2);
+			}
+
+			if ((bom[0] == 0xFF) && (bom[1] == 0xFE))
+			{
+				wstr = (WCHAR*)&((BYTE*)data)[2];
+				ConvertFromUnicode(CP_UTF8, 0, wstr, (SrcSize - 2) / 2, &pSrcData, 0, NULL, NULL);
 			}
 		}
 
-		pDstData = (char*)calloc(1, DstSize);
+		if (!pSrcData)
+		{
+			pSrcData = (char*)calloc(1, SrcSize + 1);
+
+			if (!pSrcData)
+				return NULL;
+
+			CopyMemory(pSrcData, data, SrcSize);
+		}
+
+		pDstData = (char*)calloc(1, SrcSize + 200);
 
 		if (!pDstData)
-			goto fail;
+		{
+			free(pSrcData);
+			return NULL;
+		}
 
-		sprintf_s(pDstData, DstSize,
+		sprintf_s(pDstData, SrcSize + 200,
 		          "Version:0.9\r\n"
 		          "StartHTML:0000000000\r\n"
 		          "EndHTML:0000000000\r\n"
 		          "StartFragment:0000000000\r\n"
 		          "EndFragment:0000000000\r\n");
-		body = strstr(pSrcData.cpc, "<body");
+		body = strstr(pSrcData, "<body");
 
 		if (!body)
-			body = strstr(pSrcData.cpc, "<BODY");
+			body = strstr(pSrcData, "<BODY");
 
 		/* StartHTML */
-		sprintf_s(num, sizeof(num), "%010" PRIuz "", strnlen(pDstData, DstSize));
+		sprintf_s(num, sizeof(num), "%010" PRIuz "", strnlen(pDstData, SrcSize + 200));
 		CopyMemory(&pDstData[23], num, 10);
 
 		if (!body)
-		{
-			if (!winpr_str_append("<HTML><BODY>", pDstData, DstSize, NULL))
-				goto fail;
-		}
+			strcat(pDstData, "<HTML><BODY>");
 
-		if (!winpr_str_append("<!--StartFragment-->", pDstData, DstSize, NULL))
-			goto fail;
+		strcat(pDstData, "<!--StartFragment-->");
 		/* StartFragment */
 		sprintf_s(num, sizeof(num), "%010" PRIuz "", strnlen(pDstData, SrcSize + 200));
 		CopyMemory(&pDstData[69], num, 10);
-		if (!winpr_str_append(pSrcData.cpc, pDstData, DstSize, NULL))
-			goto fail;
+		strcat(pDstData, pSrcData);
 		/* EndFragment */
 		sprintf_s(num, sizeof(num), "%010" PRIuz "", strnlen(pDstData, SrcSize + 200));
 		CopyMemory(&pDstData[93], num, 10);
-		if (!winpr_str_append("<!--EndFragment-->", pDstData, DstSize, NULL))
-			goto fail;
+		strcat(pDstData, "<!--EndFragment-->");
 
 		if (!body)
-		{
-			if (!winpr_str_append("</BODY></HTML>", pDstData, DstSize, NULL))
-				goto fail;
-		}
+			strcat(pDstData, "</BODY></HTML>");
 
 		/* EndHTML */
-		sprintf_s(num, sizeof(num), "%010" PRIuz "", strnlen(pDstData, DstSize));
+		sprintf_s(num, sizeof(num), "%010" PRIuz "", strnlen(pDstData, SrcSize + 200));
 		CopyMemory(&pDstData[43], num, 10);
-		*pSize = (UINT32)strnlen(pDstData, DstSize) + 1;
+		*pSize = (UINT32)strlen(pDstData) + 1;
+		free(pSrcData);
 	}
 
-fail:
-	free(pSrcData.pv);
 	return pDstData;
 }
 

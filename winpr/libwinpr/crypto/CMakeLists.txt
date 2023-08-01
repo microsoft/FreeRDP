@@ -15,26 +15,13 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-set(SRCS
+winpr_module_add(
 	hash.c
 	rand.c
 	cipher.c
 	cert.c
 	crypto.c
-	crypto.h
-)
-if (WITH_INTERNAL_MD4)
-    list(APPEND SRCS md4.c md4.h)
-endif()
-
-if (WITH_INTERNAL_MD5)
-	list(APPEND SRCS md5.c md5.h)
-	list(APPEND SRCS hmac_md5.c hmac_md5.h)
-endif()
-
-winpr_module_add(
-    ${SRCS}
-)
+	crypto.h)
 
 if(OPENSSL_FOUND)
 	winpr_include_directory_add(${OPENSSL_INCLUDE_DIR})

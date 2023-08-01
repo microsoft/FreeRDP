@@ -230,19 +230,19 @@ static BOOL zgfx_decompress_segment(ZGFX_CONTEXT* zgfx, wStream* stream, size_t 
 	BYTE* pbSegment;
 	size_t cbSegment;
 
-	if (!zgfx || !stream || (segmentSize < 2))
+	if (!zgfx || !stream)
 		return FALSE;
 
 	cbSegment = segmentSize - 1;
 
-	if ((Stream_GetRemainingLength(stream) < segmentSize) || (segmentSize > UINT32_MAX))
+	if ((Stream_GetRemainingLength(stream) < segmentSize) || (segmentSize < 1) ||
+	    (segmentSize > UINT32_MAX))
 		return FALSE;
 
 	Stream_Read_UINT8(stream, flags); /* header (1 byte) */
 	zgfx->OutputCount = 0;
 	pbSegment = Stream_Pointer(stream);
-	if (!Stream_SafeSeek(stream, cbSegment))
-		return FALSE;
+	Stream_Seek(stream, cbSegment);
 
 	if (!(flags & PACKET_COMPRESSED))
 	{
@@ -346,9 +346,6 @@ static BOOL zgfx_decompress_segment(ZGFX_CONTEXT* zgfx, wStream* stream, size_t 
 						if (count > sizeof(zgfx->OutputBuffer) - zgfx->OutputCount)
 							return FALSE;
 
-						if (count > zgfx->cBitsRemaining / 8)
-							return FALSE;
-
 						CopyMemory(&(zgfx->OutputBuffer[zgfx->OutputCount]), zgfx->pbInputCurrent,
 						           count);
 						zgfx_history_buffer_ring_write(zgfx, zgfx->pbInputCurrent, count);
@@ -364,17 +361,6 @@ static BOOL zgfx_decompress_segment(ZGFX_CONTEXT* zgfx, wStream* stream, size_t 
 	}
 
 	return TRUE;
-}
-
-/* Allocate the buffers a bit larger.
- *
- * Due to optimizations some h264 decoders will read data beyond
- * the actual available data, so ensure that it will never be a
- * out of bounds read.
- */
-static BYTE* aligned_zgfx_malloc(size_t size)
-{
-	return malloc(size + 64);
 }
 
 int zgfx_decompress(ZGFX_CONTEXT* zgfx, const BYTE* pSrcData, UINT32 SrcSize, BYTE** ppDstData,
@@ -400,7 +386,7 @@ int zgfx_decompress(ZGFX_CONTEXT* zgfx, const BYTE* pSrcData, UINT32 SrcSize, BY
 		*ppDstData = NULL;
 
 		if (zgfx->OutputCount > 0)
-			*ppDstData = aligned_zgfx_malloc(zgfx->OutputCount);
+			*ppDstData = (BYTE*)malloc(zgfx->OutputCount);
 
 		if (!*ppDstData)
 			goto fail;
@@ -426,7 +412,7 @@ int zgfx_decompress(ZGFX_CONTEXT* zgfx, const BYTE* pSrcData, UINT32 SrcSize, BY
 		if (Stream_GetRemainingLength(stream) < segmentCount * sizeof(UINT32))
 			goto fail;
 
-		pConcatenated = aligned_zgfx_malloc(uncompressedSize);
+		pConcatenated = (BYTE*)malloc(uncompressedSize);
 
 		if (!pConcatenated)
 			goto fail;

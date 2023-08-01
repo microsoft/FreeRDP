@@ -242,4 +242,4 @@ void _aligned_free(void* memblock)
 	free(pMem->base_addr);
 }
 
-#endif /* _WIN32 */
+#endif

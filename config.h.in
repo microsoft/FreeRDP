@@ -25,7 +25,6 @@
 #cmakedefine HAVE_VALGRIND_MEMCHECK_H
 #cmakedefine HAVE_EXECINFO_H
 #cmakedefine HAVE_GETLOGIN_R
-#cmakedefine HAVE_GETPWUID_R
 
 /* Features */
 #cmakedefine SWRESAMPLE_FOUND
@@ -64,22 +63,20 @@
 #cmakedefine WITH_FFMPEG
 #cmakedefine WITH_DSP_EXPERIMENTAL
 #cmakedefine WITH_DSP_FFMPEG
+#cmakedefine WITH_X264
 #cmakedefine WITH_OPENCL
 #cmakedefine WITH_MEDIA_FOUNDATION
-#cmakedefine WITH_MEDIACODEC
 
 #cmakedefine WITH_VAAPI
 
 #cmakedefine WITH_CHANNEL_GFXREDIR
+#cmakedefine WITH_CHANNEL_RDPAPPLIST
 
 /* Plugins */
 #cmakedefine BUILTIN_CHANNELS
 #cmakedefine WITH_RDPDR
 
 /* Channels */
-#cmakedefine CHANNEL_AINPUT
-#cmakedefine CHANNEL_AINPUT_CLIENT
-#cmakedefine CHANNEL_AINPUT_SERVER
 #cmakedefine CHANNEL_AUDIN
 #cmakedefine CHANNEL_AUDIN_CLIENT
 #cmakedefine CHANNEL_AUDIN_SERVER
@@ -119,9 +116,6 @@
 #cmakedefine CHANNEL_RDPDR
 #cmakedefine CHANNEL_RDPDR_CLIENT
 #cmakedefine CHANNEL_RDPDR_SERVER
-#cmakedefine CHANNEL_RDPECAM
-#cmakedefine CHANNEL_RDPECAM_CLIENT
-#cmakedefine CHANNEL_RDPECAM_SERVER
 #cmakedefine CHANNEL_RDPEI
 #cmakedefine CHANNEL_RDPEI_CLIENT
 #cmakedefine CHANNEL_RDPEI_SERVER
@@ -143,9 +137,6 @@
 #cmakedefine CHANNEL_SSHAGENT
 #cmakedefine CHANNEL_SSHAGENT_CLIENT
 #cmakedefine CHANNEL_SSHAGENT_SERVER
-#cmakedefine CHANNEL_TELEMETRY
-#cmakedefine CHANNEL_TELEMETRY_CLIENT
-#cmakedefine CHANNEL_TELEMETRY_SERVER
 #cmakedefine CHANNEL_TSMF
 #cmakedefine CHANNEL_TSMF_CLIENT
 #cmakedefine CHANNEL_TSMF_SERVER
@@ -190,11 +181,5 @@
 
 /* Proxy */
 #cmakedefine WITH_PROXY_MODULES
-
-#cmakedefine WITH_INTERNAL_MD4
-#cmakedefine WITH_INTERNAL_MD5
-
-/* Uwac */
-#cmakedefine HAVE_PIXMAN_REGION
 
 #endif /* FREERDP_CONFIG_H */

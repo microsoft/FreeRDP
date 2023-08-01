@@ -24,9 +24,8 @@
 #endif
 
 #include <ctype.h>
+#include <assert.h>
 #include <errno.h>
-
-#include <winpr/assert.h>
 
 #include <winpr/crt.h>
 #include <winpr/wlog.h>
@@ -47,7 +46,6 @@
 #include "cmdline.h"
 
 #include <freerdp/log.h>
-
 #define TAG CLIENT_TAG("common.cmdline")
 
 static BOOL freerdp_client_print_codepages(const char* arg)
@@ -211,7 +209,6 @@ static BOOL copy_value(const char* value, char** dst)
 static BOOL append_value(const char* value, char** dst)
 {
 	size_t x = 0, y;
-	size_t size;
 	char* tmp;
 	if (!dst || !value)
 		return FALSE;
@@ -219,16 +216,14 @@ static BOOL append_value(const char* value, char** dst)
 	if (*dst)
 		x = strlen(*dst);
 	y = strlen(value);
-
-	size = x + y + 2;
-	tmp = realloc(*dst, size);
+	tmp = realloc(*dst, x + y + 2);
 	if (!tmp)
 		return FALSE;
 	if (x == 0)
 		tmp[0] = '\0';
 	else
-		winpr_str_append(",", tmp, size, NULL);
-	winpr_str_append(value, tmp, size, NULL);
+		strcat(tmp, ",");
+	strcat(tmp, value);
 	*dst = tmp;
 	return TRUE;
 }
@@ -1572,28 +1567,6 @@ static BOOL parseSizeValue(const char* input, unsigned long* v1, unsigned long* 
 	return TRUE;
 }
 
-static BOOL prepare_default_settings(rdpSettings* settings, const COMMAND_LINE_ARGUMENT_A* args,
-                                     BOOL rdp_file)
-{
-	size_t x;
-	const char* arguments[] = { "network", "gfx", "rfx", "bpp" };
-	WINPR_ASSERT(settings);
-	WINPR_ASSERT(args);
-
-	if (rdp_file)
-		return FALSE;
-
-	for (x = 0; x < ARRAYSIZE(arguments); x++)
-	{
-		const char* arg = arguments[x];
-		COMMAND_LINE_ARGUMENT_A* p = CommandLineFindArgumentA(args, arg);
-		if (p && (p->Flags & COMMAND_LINE_ARGUMENT_PRESENT))
-			return FALSE;
-	}
-
-	return freerdp_set_connection_type(settings, CONNECTION_TYPE_AUTODETECT);
-}
-
 int freerdp_client_settings_parse_command_line_arguments(rdpSettings* settings, int argc,
                                                          char** argv, BOOL allowUnknown)
 {
@@ -1633,10 +1606,7 @@ int freerdp_client_settings_parse_command_line_arguments(rdpSettings* settings, 
 #if !defined(DEFINE_NO_DEPRECATED)
 	if (compatibility)
 	{
-		WLog_WARN(TAG, "----------------------------------------");
 		WLog_WARN(TAG, "Using deprecated command-line interface!");
-		WLog_WARN(TAG, "This will be removed with FreeRDP 3!");
-		WLog_WARN(TAG, "----------------------------------------");
 		return freerdp_client_parse_old_command_line_arguments(argc, argv, settings);
 	}
 	else
@@ -1664,8 +1634,6 @@ int freerdp_client_settings_parse_command_line_arguments(rdpSettings* settings, 
 
 		if (status < 0)
 			return status;
-
-		prepare_default_settings(settings, largs, ext);
 	}
 
 	CommandLineFindArgumentA(largs, "v");
@@ -2294,10 +2262,8 @@ int freerdp_client_settings_parse_command_line_arguments(rdpSettings* settings, 
 		{
 			if (_stricmp(arg->Value, "rpc") == 0)
 			{
-				if (!freerdp_settings_set_bool(settings, FreeRDP_GatewayRpcTransport, TRUE) ||
-				    !freerdp_settings_set_bool(settings, FreeRDP_GatewayHttpTransport, FALSE) ||
-				    !freerdp_settings_set_bool(settings, FreeRDP_GatewayHttpUseWebsockets, FALSE))
-					return COMMAND_LINE_ERROR_UNEXPECTED_VALUE;
+				settings->GatewayRpcTransport = TRUE;
+				settings->GatewayHttpTransport = FALSE;
 			}
 			else
 			{
@@ -2306,24 +2272,21 @@ int freerdp_client_settings_parse_command_line_arguments(rdpSettings* settings, 
 				{
 					*c++ = '\0';
 					if (_stricmp(c, "no-websockets") != 0)
+					{
 						return COMMAND_LINE_ERROR_UNEXPECTED_VALUE;
-
-					if (!freerdp_settings_set_bool(settings, FreeRDP_GatewayHttpUseWebsockets,
-					                               FALSE))
-						return COMMAND_LINE_ERROR_UNEXPECTED_VALUE;
+					}
+					freerdp_settings_set_bool(settings, FreeRDP_GatewayHttpUseWebsockets, FALSE);
 				}
 
 				if (_stricmp(arg->Value, "http") == 0)
 				{
-					if (!freerdp_settings_set_bool(settings, FreeRDP_GatewayRpcTransport, FALSE) ||
-					    !freerdp_settings_set_bool(settings, FreeRDP_GatewayHttpTransport, TRUE))
-						return COMMAND_LINE_ERROR_UNEXPECTED_VALUE;
+					settings->GatewayRpcTransport = FALSE;
+					settings->GatewayHttpTransport = TRUE;
 				}
 				else if (_stricmp(arg->Value, "auto") == 0)
 				{
-					if (!freerdp_settings_set_bool(settings, FreeRDP_GatewayRpcTransport, TRUE) ||
-					    !freerdp_settings_set_bool(settings, FreeRDP_GatewayHttpTransport, TRUE))
-						return COMMAND_LINE_ERROR_UNEXPECTED_VALUE;
+					settings->GatewayRpcTransport = TRUE;
+					settings->GatewayHttpTransport = TRUE;
 				}
 			}
 		}
@@ -2917,12 +2880,6 @@ int freerdp_client_settings_parse_command_line_arguments(rdpSettings* settings, 
 				return COMMAND_LINE_ERROR_UNEXPECTED_VALUE;
 
 			settings->TlsSecLevel = (UINT32)val;
-		}
-		CommandLineSwitchCase(arg, "enforce-tlsv1_2")
-		{
-			if (!(freerdp_settings_set_uint16(settings, FreeRDP_TLSMinVersion, TLS1_2_VERSION) &&
-			      freerdp_settings_set_uint16(settings, FreeRDP_TLSMaxVersion, TLS1_2_VERSION)))
-				return COMMAND_LINE_ERROR_UNEXPECTED_VALUE;
 		}
 		CommandLineSwitchCase(arg, "cert")
 		{
@@ -3539,7 +3496,7 @@ static BOOL freerdp_client_load_static_channel_addin(rdpChannels* channels, rdpS
 	{
 		if (freerdp_channels_client_load_ex(channels, settings, entryEx, data) == 0)
 		{
-			WLog_DBG(TAG, "loading channelEx %s", name);
+			WLog_INFO(TAG, "loading channelEx %s", name);
 			return TRUE;
 		}
 	}
@@ -3547,7 +3504,7 @@ static BOOL freerdp_client_load_static_channel_addin(rdpChannels* channels, rdpS
 	{
 		if (freerdp_channels_client_load(channels, settings, entry, data) == 0)
 		{
-			WLog_DBG(TAG, "loading channel %s", name);
+			WLog_INFO(TAG, "loading channel %s", name);
 			return TRUE;
 		}
 	}

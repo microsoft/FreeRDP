@@ -26,7 +26,7 @@
 
 #include "shell_ios.h"
 
-NSString *ios_get_directory_for_search_path(NSSearchPathDirectory searchPath)
+NSString *ios_get_directory_for_search_path(NSString *searchPath)
 {
 	return [NSSearchPathForDirectoriesInDomains(searchPath, NSUserDomainMask, YES) lastObject];
 }

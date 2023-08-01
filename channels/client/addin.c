@@ -231,8 +231,10 @@ static FREERDP_ADDIN** freerdp_channels_list_dynamic_addins(LPCSTR pszName, LPCS
 
 	do
 	{
-		BOOL used = FALSE;
-		FREERDP_ADDIN* pAddin = (FREERDP_ADDIN*)calloc(1, sizeof(FREERDP_ADDIN));
+		char* p[5];
+		FREERDP_ADDIN* pAddin;
+		nDashes = 0;
+		pAddin = (FREERDP_ADDIN*)calloc(1, sizeof(FREERDP_ADDIN));
 
 		if (!pAddin)
 		{
@@ -240,116 +242,57 @@ static FREERDP_ADDIN** freerdp_channels_list_dynamic_addins(LPCSTR pszName, LPCS
 			goto error_out;
 		}
 
-		nDashes = 0;
 		for (index = 0; FindData.cFileName[index]; index++)
 			nDashes += (FindData.cFileName[index] == '-') ? 1 : 0;
 
 		if (nDashes == 1)
 		{
-			size_t len;
-			char* p[2] = { 0 };
 			/* <name>-client.<extension> */
 			p[0] = FindData.cFileName;
 			p[1] = strchr(p[0], '-') + 1;
-
-			len = p[1] - p[0];
-			if (len < 1)
-			{
-				WLog_WARN(TAG, "Skipping file '%s', invalid format", FindData.cFileName);
-				goto skip;
-			}
-			strncpy(pAddin->cName, p[0], MIN(ARRAYSIZE(pAddin->cName), len - 1));
-
+			strncpy(pAddin->cName, p[0], (p[1] - p[0]) - 1);
 			pAddin->dwFlags = FREERDP_ADDIN_CLIENT;
 			pAddin->dwFlags |= FREERDP_ADDIN_DYNAMIC;
 			pAddin->dwFlags |= FREERDP_ADDIN_NAME;
 			ppAddins[nAddins++] = pAddin;
-
-			used = TRUE;
 		}
 		else if (nDashes == 2)
 		{
-			size_t len;
-			char* p[4] = { 0 };
 			/* <name>-client-<subsystem>.<extension> */
 			p[0] = FindData.cFileName;
 			p[1] = strchr(p[0], '-') + 1;
 			p[2] = strchr(p[1], '-') + 1;
 			p[3] = strchr(p[2], '.') + 1;
-
-			len = p[1] - p[0];
-			if (len < 1)
-			{
-				WLog_WARN(TAG, "Skipping file '%s', invalid format", FindData.cFileName);
-				goto skip;
-			}
-			strncpy(pAddin->cName, p[0], MIN(ARRAYSIZE(pAddin->cName), len - 1));
-
-			len = p[3] - p[2];
-			if (len < 1)
-			{
-				WLog_WARN(TAG, "Skipping file '%s', invalid format", FindData.cFileName);
-				goto skip;
-			}
-			strncpy(pAddin->cSubsystem, p[2], MIN(ARRAYSIZE(pAddin->cSubsystem), len - 1));
-
+			strncpy(pAddin->cName, p[0], (p[1] - p[0]) - 1);
+			strncpy(pAddin->cSubsystem, p[2], (p[3] - p[2]) - 1);
 			pAddin->dwFlags = FREERDP_ADDIN_CLIENT;
 			pAddin->dwFlags |= FREERDP_ADDIN_DYNAMIC;
 			pAddin->dwFlags |= FREERDP_ADDIN_NAME;
 			pAddin->dwFlags |= FREERDP_ADDIN_SUBSYSTEM;
 			ppAddins[nAddins++] = pAddin;
-
-			used = TRUE;
 		}
 		else if (nDashes == 3)
 		{
-			size_t len;
-			char* p[5] = { 0 };
 			/* <name>-client-<subsystem>-<type>.<extension> */
 			p[0] = FindData.cFileName;
 			p[1] = strchr(p[0], '-') + 1;
 			p[2] = strchr(p[1], '-') + 1;
 			p[3] = strchr(p[2], '-') + 1;
 			p[4] = strchr(p[3], '.') + 1;
-
-			len = p[1] - p[0];
-			if (len < 1)
-			{
-				WLog_WARN(TAG, "Skipping file '%s', invalid format", FindData.cFileName);
-				goto skip;
-			}
-			strncpy(pAddin->cName, p[0], MIN(ARRAYSIZE(pAddin->cName), len - 1));
-
-			len = p[3] - p[2];
-			if (len < 1)
-			{
-				WLog_WARN(TAG, "Skipping file '%s', invalid format", FindData.cFileName);
-				goto skip;
-			}
-			strncpy(pAddin->cSubsystem, p[2], MIN(ARRAYSIZE(pAddin->cSubsystem), len - 1));
-
-			len = p[4] - p[3];
-			if (len < 1)
-			{
-				WLog_WARN(TAG, "Skipping file '%s', invalid format", FindData.cFileName);
-				goto skip;
-			}
-			strncpy(pAddin->cType, p[3], MIN(ARRAYSIZE(pAddin->cType), len - 1));
-
+			strncpy(pAddin->cName, p[0], (p[1] - p[0]) - 1);
+			strncpy(pAddin->cSubsystem, p[2], (p[3] - p[2]) - 1);
+			strncpy(pAddin->cType, p[3], (p[4] - p[3]) - 1);
 			pAddin->dwFlags = FREERDP_ADDIN_CLIENT;
 			pAddin->dwFlags |= FREERDP_ADDIN_DYNAMIC;
 			pAddin->dwFlags |= FREERDP_ADDIN_NAME;
 			pAddin->dwFlags |= FREERDP_ADDIN_SUBSYSTEM;
 			pAddin->dwFlags |= FREERDP_ADDIN_TYPE;
 			ppAddins[nAddins++] = pAddin;
-
-			used = TRUE;
 		}
-
-	skip:
-		if (!used)
+		else
+		{
 			free(pAddin);
-
+		}
 	} while (FindNextFileA(hFind, &FindData));
 
 	FindClose(hFind);

@@ -33,20 +33,10 @@
 #include <openssl/ssl.h>
 #include <openssl/err.h>
 
-#if defined(OPENSSL_VERSION_MAJOR) && (OPENSSL_VERSION_MAJOR >= 3)
-#include <openssl/provider.h>
-#endif
-
 #include "../log.h"
 #define TAG WINPR_TAG("utils.ssl")
 
 static BOOL g_winpr_openssl_initialized_by_winpr = FALSE;
-
-#if defined(OPENSSL_VERSION_MAJOR) && (OPENSSL_VERSION_MAJOR >= 3)
-static OSSL_PROVIDER* s_winpr_openssl_provider_fips = NULL;
-static OSSL_PROVIDER* s_winpr_openssl_provider_legacy = NULL;
-static OSSL_PROVIDER* s_winpr_openssl_provider_default = NULL;
-#endif
 
 /**
  * Note from OpenSSL 1.1.0 "CHANGES":
@@ -252,14 +242,9 @@ static BOOL winpr_enable_fips(DWORD flags)
 		WLog_ERR(TAG, "Openssl fips mode not available on openssl versions less than 1.0.1!");
 		return FALSE;
 #else
-		WLog_DBG(TAG, "Ensuring openssl fips mode is enabled");
+		WLog_DBG(TAG, "Ensuring openssl fips mode is ENabled");
 
 #if defined(OPENSSL_VERSION_MAJOR) && (OPENSSL_VERSION_MAJOR >= 3)
-		s_winpr_openssl_provider_fips = OSSL_PROVIDER_load(NULL, "fips");
-		if (s_winpr_openssl_provider_fips == NULL)
-		{
-			WLog_WARN(TAG, "OpenSSL FIPS provider failled to load");
-		}
 		if (!EVP_default_properties_is_fips_enabled(NULL))
 #else
 		if (FIPS_mode() != 1)
@@ -270,10 +255,10 @@ static BOOL winpr_enable_fips(DWORD flags)
 #else
 			if (FIPS_mode_set(1))
 #endif
-				WLog_INFO(TAG, "Openssl fips mode enabled!");
+				WLog_INFO(TAG, "Openssl fips mode ENabled!");
 			else
 			{
-				WLog_ERR(TAG, "Openssl fips mode enable failed!");
+				WLog_ERR(TAG, "Openssl fips mode ENable failed!");
 				return FALSE;
 			}
 		}
@@ -320,23 +305,8 @@ static BOOL CALLBACK _winpr_openssl_initialize(PINIT_ONCE once, PVOID param, PVO
 		return FALSE;
 
 #endif
-
-#if defined(OPENSSL_VERSION_MAJOR) && (OPENSSL_VERSION_MAJOR >= 3)
-	/* The legacy provider is needed for MD4. */
-	s_winpr_openssl_provider_legacy = OSSL_PROVIDER_load(NULL, "legacy");
-	if (s_winpr_openssl_provider_legacy == NULL)
-	{
-		WLog_WARN(TAG, "OpenSSL LEGACY provider failed to load, no md4 support available!");
-	}
-	s_winpr_openssl_provider_default = OSSL_PROVIDER_load(NULL, "default");
-	if (s_winpr_openssl_provider_default == NULL)
-	{
-		WLog_WARN(TAG, "OpenSSL DEFAULT provider failed to load");
-	}
-#endif
-
 	g_winpr_openssl_initialized_by_winpr = TRUE;
-	return TRUE;
+	return winpr_enable_fips(flags);
 }
 
 /* exported functions */
@@ -386,11 +356,6 @@ BOOL winpr_CleanupSSL(DWORD flags)
 #endif
 	}
 
-#endif
-#if defined(OPENSSL_VERSION_MAJOR) && (OPENSSL_VERSION_MAJOR >= 3)
-	OSSL_PROVIDER_unload(s_winpr_openssl_provider_fips);
-	OSSL_PROVIDER_unload(s_winpr_openssl_provider_legacy);
-	OSSL_PROVIDER_unload(s_winpr_openssl_provider_default);
 #endif
 	return TRUE;
 }

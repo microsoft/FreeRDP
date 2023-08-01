@@ -1,4 +1,4 @@
-#!/bin/bash -xe
+#!/bin/bash
 # 
 # Copyright 2015 Thincast Technologies GmbH
 # 
@@ -9,19 +9,19 @@
 
 ## Settings
 # openssl version to use
-OPENSSLVERSION="3.0.2"
-SHA256SUM="98e91ccead4d4756ae3c9cde5e09191a8e586d9f4d50838e7ec09d6411dfdb63"
+OPENSSLVERSION="1.0.2q"
+SHA256SUM="5744cfcbcec2b1b48629f7354203bc1e5e9b5466998bbccc5b5fcde3b18eb684"
 # SDK version to use - if not set latest version found is used
 SDK_VERSION=""
 
 # Minimum SDK version the application supports
-MIN_SDK_VERSION="15.0"
+MIN_SDK_VERSION="10.0"
 
 ## Defaults
 INSTALLDIR="external"
 
 # Architectures to build
-ARCHS="arm64 x86_64"
+ARCHS="i386 x86_64 armv7 armv7s arm64"
 
 # Use default SDK version if not set
 if [ -z ${SDK_VERSION} ]; then
@@ -30,6 +30,9 @@ fi
 
 CORES=`sysctl hw.ncpu | awk '{print $2}'`
 MAKEOPTS="-j $CORES"
+# disable parallell builds since openssl build
+# fails sometimes
+MAKEOPTS=""
 
 DEVELOPER=`xcode-select -print-path`
 if [ ! -d "$DEVELOPER" ]; then
@@ -41,6 +44,16 @@ if [ ! -d "$DEVELOPER" ]; then
   exit 1
 fi
 
+function run {
+    "$@"
+    local status=$?
+    if [ $status -ne 0 ]; then
+        echo "error with $@" >&2
+        exit $status
+    fi
+    return $status
+}
+
 # Functions
 function buildArch(){
     ARCH=$1
@@ -48,38 +61,36 @@ function buildArch(){
     then
         PLATFORM="iPhoneSimulator"
     else
-        sed -ie "s!static volatile sig_atomic_t intr_signal;!static volatile intr_signal;!" "crypto/ui/ui_openssl.c"
+        run sed -ie "s!static volatile sig_atomic_t intr_signal;!static volatile intr_signal;!" "crypto/ui/ui_openssl.c"
         PLATFORM="iPhoneOS"
     fi
 
-    export CROSS_TOP="${DEVELOPER}/Platforms/${PLATFORM}.platform/Developer"
-    export CROSS_SDK="${PLATFORM}${SDK_VERSION}.sdk"
-    export BUILD_TOOLS="${DEVELOPER}"
-    export CC="${BUILD_TOOLS}/usr/bin/gcc -arch ${ARCH}"
+    run export CROSS_TOP="${DEVELOPER}/Platforms/${PLATFORM}.platform/Developer"
+    run export CROSS_SDK="${PLATFORM}${SDK_VERSION}.sdk"
+    run export BUILD_TOOLS="${DEVELOPER}"
+    run export CC="${BUILD_TOOLS}/usr/bin/gcc -arch ${ARCH}"
     if [ ! -z $MIN_SDK_VERSION ]; then
-        export CC="$CC -miphoneos-version-min=${MIN_SDK_VERSION}"
+        run export CC="$CC -miphoneos-version-min=${MIN_SDK_VERSION}"
     fi
     echo "Building openssl-${OPENSSLVERSION} for ${PLATFORM} ${SDK_VERSION} ${ARCH} (min SDK set: ${MIN_SDK_VERSION:-"none"})"
 
     LOGFILE="BuildLog.darwin-${ARCH}.txt"
     echo -n " Please wait ..."
     if [[ "$OPENSSLVERSION" =~ 1.0.0. ]]; then
-        CONFIG_ARGS=BSD-generic32
+        run ./Configure BSD-generic32 > "${LOGFILE}" 2>&1
     elif [ "${ARCH}" == "x86_64" ]; then
-        CONFIG_ARGS=darwin64-x86_64-cc
+        run ./Configure darwin64-x86_64-cc > "${LOGFILE}" 2>&1
     elif [ "${ARCH}" == "i386" ]; then
-        CONFIG_ARGS="iphoneos-cross no-asm"
+        run ./Configure iphoneos-cross no-asm > "${LOGFILE}" 2>&1
     else
-        CONFIG_ARGS=iphoneos-cross
+        run ./Configure iphoneos-cross  > "${LOGFILE}" 2>&1
     fi
 
-    ./Configure $CONFIG_ARGS  2>&1 | tee ${LOGFILE}
-
-    make ${MAKEOPTS} 2>&1 | tee ${LOGFILE}
+    run make ${MAKEOPTS} >> ${LOGFILE} 2>&1
     echo " Done. Build log saved in ${LOGFILE}"
-    cp libcrypto.a ../../lib/libcrypto_${ARCH}.a
-    cp libssl.a ../../lib/libssl_${ARCH}.a
-    make clean 2>&1 | tee ${LOGFILE}
+    run cp libcrypto.a ../../lib/libcrypto_${ARCH}.a
+    run cp libssl.a ../../lib/libssl_${ARCH}.a
+    run make clean >/dev/null 2>&1
 }
 
 # main
@@ -93,14 +104,14 @@ fi
 
 cd $INSTALLDIR
 if [ ! -d openssl ];then
-    mkdir openssl
+    run mkdir openssl
 fi
-cd openssl
+run cd openssl
 CS=`shasum -a 256 "openssl-$OPENSSLVERSION.tar.gz" | cut -d ' ' -f1`
 if [ ! "$CS" = "$SHA256SUM" ]; then
     echo "Downloading OpenSSL Version $OPENSSLVERSION ..."
-    rm -f "openssl-$OPENSSLVERSION.tar.gz"
-    curl -o "openssl-$OPENSSLVERSION.tar.gz" https://www.openssl.org/source/openssl-$OPENSSLVERSION.tar.gz
+    run rm -f "openssl-$OPENSSLVERSION.tar.gz"
+    run curl -o "openssl-$OPENSSLVERSION.tar.gz" https://www.openssl.org/source/openssl-$OPENSSLVERSION.tar.gz
 
     CS=`shasum -a 256 "openssl-$OPENSSLVERSION.tar.gz" | cut -d ' ' -f1`
     if [ ! "$CS" = "$SHA256SUM" ]; then
@@ -110,19 +121,19 @@ if [ ! "$CS" = "$SHA256SUM" ]; then
 fi
 
 # remove old build dir
-rm -rf openssltmp
-mkdir openssltmp
-cd openssltmp
+run rm -rf openssltmp
+run mkdir openssltmp
+run cd openssltmp
 
 echo "Unpacking OpenSSL ..."
-tar xfz "../openssl-$OPENSSLVERSION.tar.gz"
+run tar xfz "../openssl-$OPENSSLVERSION.tar.gz"
 if [ ! $? = 0 ]; then
     echo "Unpacking failed."
     exit 1
 fi
 echo
 
-cd "openssl-$OPENSSLVERSION"
+run cd "openssl-$OPENSSLVERSION"
 
 case `pwd` in
      *\ * )
@@ -132,22 +143,22 @@ case `pwd` in
 esac
 
 # Cleanup old build artifacts
-rm -rf ../../include
-mkdir -p ../../include
+run rm -rf ../../include
+run mkdir -p ../../include
 
-rm -rf ../../lib
-mkdir -p ../../lib
+run rm -rf ../../lib
+run mkdir -p ../../lib
 
 for i in ${ARCHS}; do
     buildArch $i
 done
 
 echo "Copying header files ..."
-cp -r include/ ../../include/
+run cp -r include/ ../../include/
 echo
 
 echo "Combining to unversal binary"
-lipo -create ../../lib/libcrypto_*.a -o ../../lib/libcrypto.a
-lipo -create ../../lib/libssl_*.a -o ../../lib/libssl.a
+run lipo -create ../../lib/libcrypto_*.a -o ../../lib/libcrypto.a
+run lipo -create ../../lib/libssl_*.a -o ../../lib/libssl.a
 
 echo "Finished. Please verify the contens of the openssl folder in \"$INSTALLDIR\""

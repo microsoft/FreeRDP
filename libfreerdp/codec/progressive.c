@@ -23,7 +23,6 @@
 #include "config.h"
 #endif
 
-#include <winpr/assert.h>
 #include <winpr/crt.h>
 #include <winpr/print.h>
 #include <winpr/bitstream.h>
@@ -368,11 +367,13 @@ static INLINE PROGRESSIVE_SURFACE_CONTEXT*
 progressive_get_surface_data(PROGRESSIVE_CONTEXT* progressive, UINT16 surfaceId)
 {
 	void* key = (void*)(((ULONG_PTR)surfaceId) + 1);
+	void* pData = NULL;
 
 	if (!progressive)
 		return NULL;
 
-	return HashTable_GetItemValue(progressive->SurfaceContexts, key);
+	pData = HashTable_GetItemValue(progressive->SurfaceContexts, key);
+	return pData;
 }
 
 static void progressive_tile_free(RFX_PROGRESSIVE_TILE* tile)
@@ -385,13 +386,9 @@ static void progressive_tile_free(RFX_PROGRESSIVE_TILE* tile)
 	}
 }
 
-static void progressive_surface_context_free(void* ptr)
+static void progressive_surface_context_free(PROGRESSIVE_SURFACE_CONTEXT* surface)
 {
-	PROGRESSIVE_SURFACE_CONTEXT* surface = ptr;
 	UINT32 index;
-
-	if (!surface)
-		return;
 
 	for (index = 0; index < surface->gridSize; index++)
 	{
@@ -437,36 +434,6 @@ static INLINE BOOL progressive_tile_allocate(RFX_PROGRESSIVE_TILE* tile)
 	return rc;
 }
 
-static BOOL progressive_allocate_tile_cache(PROGRESSIVE_SURFACE_CONTEXT* surface)
-{
-	size_t oldIndex;
-
-	WINPR_ASSERT(surface);
-	WINPR_ASSERT(surface->gridSize > 0);
-
-	oldIndex = surface->gridSize;
-	if (surface->tiles)
-		surface->gridSize *= 2;
-
-	{
-		void* tmp = realloc(surface->tiles, surface->gridSize * sizeof(RFX_PROGRESSIVE_TILE));
-		if (!tmp)
-			return FALSE;
-		surface->tiles = tmp;
-		memset(&surface->tiles[oldIndex], 0,
-		       (surface->gridSize - oldIndex) * sizeof(RFX_PROGRESSIVE_TILE));
-	}
-	{
-		void* tmp = realloc(surface->updatedTileIndices, surface->gridSize * sizeof(UINT32));
-		if (!tmp)
-			return FALSE;
-		surface->updatedTileIndices = tmp;
-		memset(&surface->updatedTileIndices[oldIndex], 0,
-		       (surface->gridSize - oldIndex) * sizeof(UINT32));
-	}
-	return TRUE;
-}
-
 static PROGRESSIVE_SURFACE_CONTEXT* progressive_surface_context_new(UINT16 surfaceId, UINT32 width,
                                                                     UINT32 height)
 {
@@ -483,10 +450,14 @@ static PROGRESSIVE_SURFACE_CONTEXT* progressive_surface_context_new(UINT16 surfa
 	surface->gridWidth = (width + (64 - width % 64)) / 64;
 	surface->gridHeight = (height + (64 - height % 64)) / 64;
 	surface->gridSize = surface->gridWidth * surface->gridHeight;
+	surface->tiles = (RFX_PROGRESSIVE_TILE*)calloc(surface->gridSize, sizeof(RFX_PROGRESSIVE_TILE));
+	surface->updatedTileIndices = (UINT32*)calloc(surface->gridSize, sizeof(UINT32));
 
-	if (!progressive_allocate_tile_cache(surface))
+	if (!surface->tiles || !surface->updatedTileIndices)
 	{
-		progressive_surface_context_free(surface);
+		free(surface->updatedTileIndices);
+		free(surface->tiles);
+		free(surface);
 		return NULL;
 	}
 	for (x = 0; x < surface->gridSize; x++)
@@ -578,8 +549,8 @@ static BOOL progressive_surface_tile_replace(PROGRESSIVE_SURFACE_CONTEXT* surfac
 	}
 	if (surface->numUpdatedTiles >= surface->gridSize)
 	{
-		if (!progressive_allocate_tile_cache(surface))
-			return FALSE;
+		WLog_ERR(TAG, "Invalid total tile count, maximum %" PRIu32, surface->gridSize);
+		return FALSE;
 	}
 
 	region->tiles[region->usedTiles++] = t;
@@ -612,7 +583,13 @@ INT32 progressive_create_surface_context(PROGRESSIVE_CONTEXT* progressive, UINT1
 
 int progressive_delete_surface_context(PROGRESSIVE_CONTEXT* progressive, UINT16 surfaceId)
 {
-	progressive_set_surface_data(progressive, surfaceId, NULL);
+	PROGRESSIVE_SURFACE_CONTEXT* surface = progressive_get_surface_data(progressive, surfaceId);
+
+	if (surface)
+	{
+		progressive_set_surface_data(progressive, surfaceId, NULL);
+		progressive_surface_context_free(surface);
+	}
 
 	return 1;
 }
@@ -896,7 +873,7 @@ static INLINE int progressive_rfx_decode_component(PROGRESSIVE_CONTEXT* progress
 		return status;
 
 	CopyMemory(sign, buffer, 4096 * 2);
-	if (!extrapolate)
+	if (!subbandDiff)
 	{
 		rfx_differential_decode(buffer + 4032, 64);
 		progressive_rfx_decode_block(prims, &buffer[0], 1024, shift->HL1);    /* HL1 */
@@ -1107,7 +1084,7 @@ static INLINE INT16 progressive_rfx_srl_read(RFX_PROGRESSIVE_UPGRADE_STATE* stat
 			if (k)
 			{
 				bs->mask = ((1 << k) - 1);
-				state->nz = ((bs->accumulator >> (32u - k)) & bs->mask);
+				state->nz = ((bs->accumulator >> (32 - k)) & bs->mask);
 				BitStream_Shift(bs, k);
 			}
 
@@ -1658,9 +1635,6 @@ static void CALLBACK progressive_process_tiles_tile_work_callback(PTP_CALLBACK_I
                                                                   void* context, PTP_WORK work)
 {
 	PROGRESSIVE_TILE_PROCESS_WORK_PARAM* param = (PROGRESSIVE_TILE_PROCESS_WORK_PARAM*)context;
-
-	WINPR_UNUSED(instance);
-	WINPR_UNUSED(work);
 
 	switch (param->tile->blockType)
 	{
@@ -2397,8 +2371,8 @@ INT32 progressive_decompress_ex(PROGRESSIVE_CONTEXT* progressive, const BYTE* pS
 	{
 		RECTANGLE_16 clippingRect;
 		const RFX_RECT* rect = &(region->rects[i]);
-		clippingRect.left = (UINT16)nXDst + rect->x;
-		clippingRect.top = (UINT16)nYDst + rect->y;
+		clippingRect.left = nXDst + rect->x;
+		clippingRect.top = nYDst + rect->y;
 		clippingRect.right = clippingRect.left + rect->width;
 		clippingRect.bottom = clippingRect.top + rect->height;
 		region16_union_rect(&clippingRects, &clippingRects, &clippingRect);
@@ -2741,8 +2715,6 @@ PROGRESSIVE_CONTEXT* progressive_context_new(BOOL Compressor)
 	if (!progressive_context_reset(progressive))
 		goto fail;
 
-	progressive->SurfaceContexts->valueFree = progressive_surface_context_free;
-
 	return progressive;
 fail:
 	progressive_context_free(progressive);
@@ -2751,6 +2723,11 @@ fail:
 
 void progressive_context_free(PROGRESSIVE_CONTEXT* progressive)
 {
+	int count;
+	int index;
+	ULONG_PTR* pKeys = NULL;
+	PROGRESSIVE_SURFACE_CONTEXT* surface;
+
 	if (!progressive)
 		return;
 
@@ -2759,7 +2736,21 @@ void progressive_context_free(PROGRESSIVE_CONTEXT* progressive)
 	rfx_context_free(progressive->rfx_context);
 
 	BufferPool_Free(progressive->bufferPool);
-	HashTable_Free(progressive->SurfaceContexts);
+
+	if (progressive->SurfaceContexts)
+	{
+		count = HashTable_GetKeys(progressive->SurfaceContexts, &pKeys);
+
+		for (index = 0; index < count; index++)
+		{
+			surface = (PROGRESSIVE_SURFACE_CONTEXT*)HashTable_GetItemValue(
+			    progressive->SurfaceContexts, (void*)pKeys[index]);
+			progressive_surface_context_free(surface);
+		}
+
+		free(pKeys);
+		HashTable_Free(progressive->SurfaceContexts);
+	}
 
 	free(progressive);
 }

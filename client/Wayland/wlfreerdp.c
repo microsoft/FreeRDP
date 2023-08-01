@@ -225,7 +225,6 @@ static BOOL wl_post_connect(freerdp* instance)
 	wlfContext* context;
 	rdpSettings* settings;
 	char* title = "FreeRDP";
-	char* app_id = "wlfreerdp";
 	UINT32 w, h;
 
 	if (!instance || !instance->context)
@@ -267,7 +266,6 @@ static BOOL wl_post_connect(freerdp* instance)
 
 	UwacWindowSetFullscreenState(window, NULL, instance->context->settings->Fullscreen);
 	UwacWindowSetTitle(window, title);
-	UwacWindowSetAppId(window, app_id);
 	UwacWindowSetOpaqueRegion(context->window, 0, 0, w, h);
 	instance->update->BeginPaint = wl_begin_paint;
 	instance->update->EndPaint = wl_end_paint;
@@ -333,15 +331,12 @@ static BOOL handle_uwac_events(freerdp* instance, UwacDisplay* display)
 				break;
 
 			case UWAC_EVENT_FRAME_DONE:
-			{
-				UwacReturnCode r;
 				EnterCriticalSection(&context->critical);
-				r = UwacWindowSubmitBuffer(context->window, false);
+				rc = UwacWindowSubmitBuffer(context->window, false);
 				LeaveCriticalSection(&context->critical);
-				if (r != UWAC_SUCCESS)
+				if (rc != UWAC_SUCCESS)
 					return FALSE;
-			}
-			    break;
+				break;
 
 			case UWAC_EVENT_POINTER_ENTER:
 				if (!wlf_handle_pointer_enter(instance, &event.mouse_enter_leave))

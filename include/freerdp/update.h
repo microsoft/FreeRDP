@@ -254,6 +254,7 @@ struct rdp_update
 
 	wStream* us;
 	UINT16 numberOrders;
+	UINT16 offsetOrders; /* the offset to patch numberOrders in the stream */
 	BOOL combineUpdates;
 	rdpBounds currentBounds;
 	rdpBounds previousBounds;
@@ -263,7 +264,6 @@ struct rdp_update
 	 * fills BITMAP_DATA struct members: flags, cbCompMainBodySize and cbCompFirstRowSize.
 	 */
 	BOOL autoCalculateBitmapData;
-	size_t offsetOrders; /* the offset to patch numberOrders in the stream */
 };
 
 #endif /* FREERDP_UPDATE_H */

@@ -41,13 +41,11 @@ static const char* const INFO_TYPE_LOGON_STRINGS[4] = { "Logon Info V1", "Logon 
 
 /* This define limits the length of the strings in the label field. */
 #define MAX_LABEL_LENGTH 40
-struct info_flags_t
+static struct
 {
 	UINT32 flag;
 	const char* label;
-};
-
-static const struct info_flags_t info_flags[] = {
+} const info_flags[] = {
 	{ INFO_MOUSE, "INFO_MOUSE" },
 	{ INFO_DISABLECTRLALTDEL, "INFO_DISABLECTRLALTDEL" },
 	{ INFO_AUTOLOGON, "INFO_AUTOLOGON" },
@@ -69,8 +67,8 @@ static const struct info_flags_t info_flags[] = {
 	{ INFO_HIDEF_RAIL_SUPPORTED, "INFO_HIDEF_RAIL_SUPPORTED" },
 };
 
-static BOOL rdp_read_info_null_string(const char* what, UINT32 flags, wStream* s, size_t cbLen,
-                                      CHAR** dst, size_t max, BOOL isNullTerminated)
+static BOOL rdp_read_info_null_string(UINT32 flags, wStream* s, size_t cbLen, CHAR** dst,
+                                      size_t max)
 {
 	CHAR* ret = NULL;
 
@@ -78,23 +76,22 @@ static BOOL rdp_read_info_null_string(const char* what, UINT32 flags, wStream* s
 	const size_t nullSize = unicode ? sizeof(WCHAR) : sizeof(CHAR);
 
 	if (Stream_GetRemainingLength(s) < (size_t)(cbLen))
-	{
-		WLog_ERR(TAG, "protocol error: no data to read for %s [expected %" PRIuz "]", what, cbLen);
 		return FALSE;
-	}
 
 	if (cbLen > 0)
 	{
-		const WCHAR* domain = Stream_Pointer(s);
-
-		if (isNullTerminated && (max > 0))
-			max -= nullSize;
-
-		if ((cbLen > max) || (unicode && ((cbLen % 2) != 0)))
+		WCHAR domain[512 / sizeof(WCHAR) + sizeof(WCHAR)] = { 0 };
+		/* cbDomain is the size in bytes of the character data in the Domain field.
+		 * This size excludes (!) the length of the mandatory null terminator.
+		 * Maximum value including the mandatory null terminator: 512
+		 */
+		if ((cbLen % 2) || (cbLen > (max - nullSize)))
 		{
-			WLog_ERR(TAG, "protocol error: %s has invalid value: %" PRIuz "", what, cbLen);
+			WLog_ERR(TAG, "protocol error: invalid value: %" PRIuz "", cbLen);
 			return FALSE;
 		}
+
+		Stream_Read(s, domain, cbLen);
 
 		if (unicode)
 		{
@@ -111,13 +108,6 @@ static BOOL rdp_read_info_null_string(const char* what, UINT32 flags, wStream* s
 				return FALSE;
 			memcpy(ret, domain, cbLen);
 		}
-
-		if (!Stream_SafeSeek(s, cbLen))
-		{
-			WLog_ERR(TAG, "protocol error: no data to read for %s [expected %" PRIuz "]", what,
-			         cbLen);
-			return FALSE;
-		}
 	}
 
 	free(*dst);
@@ -128,8 +118,12 @@ static BOOL rdp_read_info_null_string(const char* what, UINT32 flags, wStream* s
 static char* rdp_info_package_flags_description(UINT32 flags)
 {
 	char* result;
-	size_t maximum_size = 1 + MAX_LABEL_LENGTH * ARRAYSIZE(info_flags);
+	size_t maximum_size = 1; /* Reserve space for the terminating '\0' by strcat if all flags set */
 	size_t i;
+	size_t size;
+
+	for (i = 0; i < ARRAYSIZE(info_flags); i++)
+		maximum_size += strnlen(info_flags[i].label, MAX_LABEL_LENGTH) + 1;
 
 	result = calloc(maximum_size, sizeof(char));
 
@@ -138,12 +132,17 @@ static char* rdp_info_package_flags_description(UINT32 flags)
 
 	for (i = 0; i < ARRAYSIZE(info_flags); i++)
 	{
-		const struct info_flags_t* cur = &info_flags[i];
-		if (cur->flag & flags)
+		if (info_flags[i].flag & flags)
 		{
-			winpr_str_append(cur->label, result, maximum_size, "|");
+			strcat(result, info_flags[i].label);
+			strcat(result, "|");
 		}
 	}
+
+	size = strnlen(result, maximum_size);
+
+	if (size > 0)
+		result[size - 1] = '\0'; /* remove last "|" */
 
 	return result;
 }
@@ -259,23 +258,13 @@ static BOOL rdp_read_client_auto_reconnect_cookie(rdpRdp* rdp, wStream* s)
  * @param settings settings
  */
 
-static BOOL rdp_write_client_auto_reconnect_cookie(rdpRdp* rdp, wStream* s)
+static void rdp_write_client_auto_reconnect_cookie(rdpRdp* rdp, wStream* s)
 {
 	BYTE* p;
 	ARC_CS_PRIVATE_PACKET* autoReconnectCookie;
-	rdpSettings* settings;
-
-	WINPR_ASSERT(rdp);
-
-	settings = rdp->settings;
-	WINPR_ASSERT(settings);
-
+	rdpSettings* settings = rdp->settings;
 	autoReconnectCookie = settings->ClientAutoReconnectCookie;
-	WINPR_ASSERT(autoReconnectCookie);
-
 	p = autoReconnectCookie->securityVerifier;
-	WINPR_ASSERT(p);
-
 	WLog_DBG(TAG,
 	         "ClientAutoReconnectCookie: Version: %" PRIu32 " LogonId: %" PRIu32 " ArcRandomBits: "
 	         "%02" PRIX8 "%02" PRIX8 "%02" PRIX8 "%02" PRIX8 "%02" PRIX8 "%02" PRIX8 "%02" PRIX8
@@ -284,34 +273,10 @@ static BOOL rdp_write_client_auto_reconnect_cookie(rdpRdp* rdp, wStream* s)
 	         "%02" PRIX8 "",
 	         autoReconnectCookie->version, autoReconnectCookie->logonId, p[0], p[1], p[2], p[3],
 	         p[4], p[5], p[6], p[7], p[8], p[9], p[10], p[11], p[12], p[13], p[14], p[15]);
-	if (!Stream_EnsureRemainingCapacity(s, 12ull + 16ull))
-		return FALSE;
 	Stream_Write_UINT32(s, autoReconnectCookie->cbLen);         /* cbLen (4 bytes) */
 	Stream_Write_UINT32(s, autoReconnectCookie->version);       /* version (4 bytes) */
 	Stream_Write_UINT32(s, autoReconnectCookie->logonId);       /* LogonId (4 bytes) */
 	Stream_Write(s, autoReconnectCookie->securityVerifier, 16); /* SecurityVerifier (16 bytes) */
-	return TRUE;
-}
-
-/*
- * Get the cbClientAddress size limit
- * see [MS-RDPBCGR] 2.2.1.11.1.1.1 Extended Info Packet (TS_EXTENDED_INFO_PACKET)
- */
-
-static size_t rdp_get_client_address_max_size(const rdpRdp* rdp)
-{
-	UINT32 version;
-	rdpSettings* settings;
-
-	WINPR_ASSERT(rdp);
-
-	settings = rdp->settings;
-	WINPR_ASSERT(settings);
-
-	version = freerdp_settings_get_uint32(settings, FreeRDP_RdpVersion);
-	if (version < RDP_VERSION_10_0)
-		return 64;
-	return 80;
 }
 
 /**
@@ -335,11 +300,27 @@ static BOOL rdp_read_extended_info_packet(rdpRdp* rdp, wStream* s)
 	Stream_Read_UINT16(s, clientAddressFamily); /* clientAddressFamily (2 bytes) */
 	Stream_Read_UINT16(s, cbClientAddress);     /* cbClientAddress (2 bytes) */
 
+	/* cbClientAddress is the size in bytes of the character data in the clientAddress field.
+	 * This size includes the length of the mandatory null terminator.
+	 * The maximum allowed value is 80 bytes
+	 * Note: Although according to [MS-RDPBCGR 2.2.1.11.1.1.1] the null terminator
+	 * is mandatory, connections via Microsoft's TS Gateway set cbClientAddress to 0.
+	 */
+
+	if ((cbClientAddress % 2) || cbClientAddress > 80)
+	{
+		WLog_ERR(TAG, "protocol error: invalid cbClientAddress value: %" PRIu16 "",
+		         cbClientAddress);
+		return FALSE;
+	}
+
 	settings->IPv6Enabled = (clientAddressFamily == ADDRESS_FAMILY_INET6 ? TRUE : FALSE);
 
-	if (!rdp_read_info_null_string("cbClientAddress", INFO_UNICODE, s, cbClientAddress,
-	                               &settings->ClientAddress, rdp_get_client_address_max_size(rdp),
-	                               TRUE))
+	if (Stream_GetRemainingLength(s) < cbClientAddress)
+		return FALSE;
+
+	if (!rdp_read_info_null_string(INFO_UNICODE, s, cbClientAddress, &settings->ClientAddress,
+	                               (settings->RdpVersion < RDP_VERSION_10_0) ? 64 : 80))
 		return FALSE;
 
 	if (Stream_GetRemainingLength(s) < 2)
@@ -355,8 +336,7 @@ static BOOL rdp_read_extended_info_packet(rdpRdp* rdp, wStream* s)
 	 * sets cbClientDir to 0.
 	 */
 
-	if (!rdp_read_info_null_string("cbClientDir", INFO_UNICODE, s, cbClientDir,
-	                               &settings->ClientDir, 512, TRUE))
+	if (!rdp_read_info_null_string(INFO_UNICODE, s, cbClientDir, &settings->ClientDir, 512))
 		return FALSE;
 
 	/**
@@ -426,11 +406,9 @@ static BOOL rdp_write_extended_info_packet(rdpRdp* rdp, wStream* s)
 	int rc;
 	UINT16 clientAddressFamily;
 	WCHAR* clientAddress = NULL;
-	size_t cbClientAddress;
-	const size_t cbClientAddressMax = rdp_get_client_address_max_size(rdp);
+	UINT16 cbClientAddress;
 	WCHAR* clientDir = NULL;
-	size_t cbClientDir;
-	const size_t cbClientDirMax = 512;
+	UINT16 cbClientDir;
 	UINT16 cbAutoReconnectCookie;
 	rdpSettings* settings;
 	if (!rdp || !rdp->settings || !s)
@@ -441,51 +419,28 @@ static BOOL rdp_write_extended_info_packet(rdpRdp* rdp, wStream* s)
 	if ((rc < 0) || (rc > (UINT16_MAX / 2)))
 		goto fail;
 	cbClientAddress = (UINT16)rc * 2;
-	if (cbClientAddress > cbClientAddressMax)
-	{
-		WLog_WARN(TAG,
-		          "[%s] the client address %s [%" PRIuz "] exceeds the limit of %" PRIuz
-		          ", truncating.",
-		          __FUNCTION__, settings->ClientAddress, cbClientAddress, cbClientAddressMax);
-
-		clientAddress[(cbClientAddressMax / sizeof(WCHAR)) - 1] = '\0';
-		cbClientAddress = cbClientAddressMax;
-	}
 
 	rc = ConvertToUnicode(CP_UTF8, 0, settings->ClientDir, -1, &clientDir, 0);
 	if ((rc < 0) || (rc > (UINT16_MAX / 2)))
 		goto fail;
 	cbClientDir = (UINT16)rc * 2;
-	if (cbClientDir > cbClientDirMax)
-	{
-		WLog_WARN(
-		    TAG, "[%s] the client dir %s [%" PRIuz "] exceeds the limit of %" PRIuz ", truncating.",
-		    __FUNCTION__, settings->ClientDir, cbClientDir, cbClientDirMax);
-
-		clientDir[(cbClientDirMax / sizeof(WCHAR)) - 1] = '\0';
-		cbClientDir = cbClientDirMax;
-	}
 
 	if (settings->ServerAutoReconnectCookie->cbLen > UINT16_MAX)
 		goto fail;
 	cbAutoReconnectCookie = (UINT16)settings->ServerAutoReconnectCookie->cbLen;
 
-	if (!Stream_EnsureRemainingCapacity(s, 4ull + cbClientAddress + 2ull + cbClientDir))
-		goto fail;
-
 	Stream_Write_UINT16(s, clientAddressFamily); /* clientAddressFamily (2 bytes) */
-	Stream_Write_UINT16(s, cbClientAddress);     /* cbClientAddress (2 bytes) */
+	Stream_Write_UINT16(s, cbClientAddress + 2); /* cbClientAddress (2 bytes) */
 
 	Stream_Write(s, clientAddress, cbClientAddress); /* clientAddress */
 
-	Stream_Write_UINT16(s, cbClientDir); /* cbClientDir (2 bytes) */
+	Stream_Write_UINT16(s, 0);
+	Stream_Write_UINT16(s, cbClientDir + 2); /* cbClientDir (2 bytes) */
 
 	Stream_Write(s, clientDir, cbClientDir); /* clientDir */
 
+	Stream_Write_UINT16(s, 0);
 	if (!rdp_write_client_time_zone(s, settings)) /* clientTimeZone (172 bytes) */
-		goto fail;
-
-	if (!Stream_EnsureRemainingCapacity(s, 10ull))
 		goto fail;
 
 	Stream_Write_UINT32(s, 0); /* clientSessionId (4 bytes), should be set to 0 */
@@ -497,11 +452,7 @@ static BOOL rdp_write_extended_info_packet(rdpRdp* rdp, wStream* s)
 	{
 		if (!rdp_compute_client_auto_reconnect_cookie(rdp))
 			goto fail;
-		if (!rdp_write_client_auto_reconnect_cookie(rdp, s)) /* autoReconnectCookie */
-			goto fail;
-
-		if (!Stream_EnsureRemainingCapacity(s, 4ull))
-			goto fail;
+		rdp_write_client_auto_reconnect_cookie(rdp, s); /* autoReconnectCookie */
 		Stream_Write_UINT16(s, 0);                      /* reserved1 (2 bytes) */
 		Stream_Write_UINT16(s, 0);                      /* reserved2 (2 bytes) */
 	}
@@ -760,9 +711,7 @@ static BOOL rdp_write_info_packet(rdpRdp* rdp, wStream* s)
 
 	if (!settings->RemoteAssistanceMode)
 	{
-		/* Ignore redirection password if we´re using smartcard and have the pin as password */
-		if (((flags & INFO_PASSWORD_IS_SC_PIN) == 0) && settings->RedirectionPassword &&
-		    (settings->RedirectionPasswordLength > 0))
+		if (settings->RedirectionPassword && settings->RedirectionPasswordLength > 0)
 		{
 			union {
 				BYTE* bp;

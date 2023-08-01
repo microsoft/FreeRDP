@@ -22,7 +22,6 @@
 
 /* OpenSSL includes windows.h */
 #include <winpr/windows.h>
-#include <winpr/custom-crypto.h>
 
 #include <openssl/ssl.h>
 #include <openssl/err.h>
@@ -55,7 +54,6 @@ extern "C"
 	typedef struct crypto_cert_struct* CryptoCert;
 
 	FREERDP_API CryptoCert crypto_cert_read(BYTE* data, UINT32 length);
-	FREERDP_API WINPR_MD_TYPE crypto_cert_get_signature_alg(X509* xcert);
 	FREERDP_API BYTE* crypto_cert_hash(X509* xcert, const char* hash, UINT32* length);
 	FREERDP_API char* crypto_cert_fingerprint_by_hash(X509* xcert, const char* hash);
 	FREERDP_API char* crypto_cert_fingerprint(X509* xcert);
@@ -90,9 +88,9 @@ extern "C"
 	                                            DWORD* PublicKeyLength);
 
 #define TSSK_KEY_LENGTH 64
-	WINPR_API extern const BYTE tssk_modulus[];
-	WINPR_API extern const BYTE tssk_privateExponent[];
-	WINPR_API extern const BYTE tssk_exponent[];
+	extern const BYTE tssk_modulus[];
+	extern const BYTE tssk_privateExponent[];
+	extern const BYTE tssk_exponent[];
 
 	FREERDP_API int crypto_rsa_public_encrypt(const BYTE* input, int length, UINT32 key_length,
 	                                          const BYTE* modulus, const BYTE* exponent,
